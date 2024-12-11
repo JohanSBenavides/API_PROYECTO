@@ -9,8 +9,8 @@ def seed_roles():
         # Inicialización de roles
         if not Rol.query.first():  # Si no existe ningún rol en la base de datos
             roles = [
-                Rol(id_rol=1, nombre_rol="ADMINISTRADOR"),  # Rol Administrador
-                Rol(id_rol=2, nombre_rol="CLIENTE")  # Rol Cliente
+                Rol(rol_id=1, nombre_rol="ADMINISTRADOR"),  # Rol Administrador
+                Rol(rol_id=2, nombre_rol="CLIENTE")  # Rol Cliente
             ]
             db.session.bulk_save_objects(roles)  # Guardar los roles en la base de datos
             db.session.commit()  # Confirmar los cambios
@@ -23,9 +23,9 @@ def seed_roles():
             superadmin = Usuario(
                 nombre="Super Admin",
                 numerodoc=1013598175,
-                correo="dilanf@gmail.com",  # Número de teléfono
-                contrasena="superadmin123",  # Dirección ficticia
-                rol_id=1  # Rol de Administrador (id=1)
+                correo="dilanf@gmail.com",  
+                contrasena="superadmin123", 
+                rol_id=1  
             )
             db.session.add(superadmin)  # Añadir al superadmin a la base de datos
             db.session.commit()  # Confirmar los cambios

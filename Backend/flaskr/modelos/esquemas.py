@@ -69,3 +69,4 @@ class EnvioSchema(SQLAlchemyAutoSchema):
         model = Envio
         include_relationships = True
         load_instance = True
+

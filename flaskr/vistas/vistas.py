@@ -4,7 +4,7 @@ from datetime import datetime
 from flask import request, jsonify
 from flask_restful import Resource
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-from ..modelos import db, Usuario, Producto, Categoria, CarritoProductoSchema, CarritoProducto, Rol, UsuarioSchema, ProductoSchema, CategoriaSchema, RolSchema, PagoSchema, EnvioSchema, OrdenSchema, CarritoSchema, FacturaSchema, DetalleFacturaSchema, DetalleFactura, Factura, Pago, Orden, Envio, Carrito
+from ..modelos import db, Usuario, TarjetaDetalle, TransferenciaDetalle, PaypalDetalle, Producto, Categoria, CarritoProductoSchema, CarritoProducto, Rol, UsuarioSchema, ProductoSchema, CategoriaSchema, RolSchema, PagoSchema, EnvioSchema, OrdenSchema, CarritoSchema, FacturaSchema, DetalleFacturaSchema, DetalleFactura, Factura, Pago, Orden, Envio, Carrito
 
 # Uso de los schemas creados en modelos
 usuario_schema = UsuarioSchema()
@@ -741,6 +741,7 @@ class VistaEnvio(Resource):
         db.session.commit()
         return {"message": "Envío eliminado exitosamente"}, 200
 
+
 class VistaPagos(Resource):
     @jwt_required()
     def get(self):
@@ -749,42 +750,146 @@ class VistaPagos(Resource):
 
     @jwt_required()
     def post(self):
-        nuevo_pago = Pago(
-            id_orden=request.json['id_orden'],
-            fecha_pago=request.json['fecha_pago'],
-            monto=request.json['monto'],
-            metodo_pago=request.json['metodo_pago'],
-            estado=request.json['estado']
-        )
-        db.session.add(nuevo_pago)
-        db.session.commit()
-        return {"message": "Pago creado exitosamente"}, 201
+        data = request.get_json()
+
+        # Verificar que todos los campos necesarios estén presentes
+        if not data:
+            return {"error": "No se envió un cuerpo JSON"}, 400
+        
+        # Validar los campos requeridos
+        required_fields = ['id_carrito', 'fecha_pago', 'monto', 'metodo_pago', 'estado']
+        for field in required_fields:
+            if field not in data:
+                return {"error": f"Falta el campo: {field}"}, 400
+
+        try:
+            # Crear el objeto Pago
+            nuevo_pago = Pago(
+                id_carrito=data['id_carrito'],
+                fecha_pago=data['fecha_pago'],
+                monto=data['monto'],
+                metodo_pago=data['metodo_pago'],
+                estado=data['estado']
+            )
+            
+            # Agregar el nuevo pago a la sesión de la base de datos
+            db.session.add(nuevo_pago)
+            db.session.commit()
+
+            return {"message": "Pago creado exitosamente"}, 201
+        
+        except Exception as e:
+            db.session.rollback()
+            return {"error": str(e)}, 500
+
 
 class VistaPago(Resource):
     @jwt_required()
-    def put(self, id_pago):
-        pago = Pago.query.get(id_pago)
-        if not pago:
-            return {"message": "Pago no encontrado"}, 404
+    def post(self):
+        # Obtener el id_usuario desde el token JWT
+        id_usuario = get_jwt_identity()
 
-        pago.id_orden = request.json.get('id_orden', pago.id_orden)
-        pago.fecha_pago = request.json.get('fecha_pago', pago.fecha_pago)
-        pago.monto = request.json.get('monto', pago.monto)
-        pago.metodo_pago = request.json.get('metodo_pago', pago.metodo_pago)
-        pago.estado = request.json.get('estado', pago.estado)
+        # Consultar el carrito del usuario
+        carrito = Carrito.query.filter_by(id_usuario=id_usuario, procesado=False).first()
 
+        # Verificar si el carrito existe y tiene productos
+        if not carrito:
+            return {"message": "No hay carrito encontrado o el carrito ya fue procesado"}, 400
+
+        # Obtener el monto total del carrito
+        monto_total = carrito.total
+
+        # Obtener el método de pago del cuerpo de la solicitud
+        metodo_pago = request.json.get('metodo_pago')
+
+        # Crear un nuevo registro de pago
+        nuevo_pago = Pago(
+            id_carrito=carrito.id_carrito,
+            monto=monto_total,
+            metodo_pago=metodo_pago,
+            estado='pendiente',  # Asumimos que el pago está pendiente
+            fecha_pago=datetime.utcnow()  # Fecha actual en UTC
+        )
+
+        # Agregar el pago a la base de datos
+        db.session.add(nuevo_pago)
         db.session.commit()
-        return pago_schema.dump(pago), 200
 
+        # Obtener los productos del carrito y actualizamos el stock
+        for carrito_producto in carrito.productos:
+            producto = carrito_producto.producto  # Accedemos al producto desde la relación CarritoProducto
+            if producto.producto_stock >= carrito_producto.cantidad:
+                # Restamos la cantidad comprada del stock del producto
+                producto.producto_stock -= carrito_producto.cantidad
+            else:
+                # Si no hay suficiente stock, devolvemos un mensaje de error
+                return {"message": f"No hay suficiente stock para el producto {producto.producto_nombre}"}, 400
+        
+        # Guardar los cambios de stock
+        db.session.commit()
+
+        # Marcar el carrito como procesado
+        carrito.procesado = True
+        db.session.commit()
+
+        # Crear un nuevo carrito para el usuario
+        nuevo_carrito = Carrito(
+            id_usuario=id_usuario,
+            total=0,  # El nuevo carrito comienza vacío, con total 0
+            procesado=False  # El nuevo carrito aún no está procesado
+        )
+
+        # Agregar el nuevo carrito a la base de datos
+        db.session.add(nuevo_carrito)
+        db.session.commit()
+
+        return {"message": "Pago creado exitosamente, productos actualizados y nuevo carrito creado", "id_pago": nuevo_pago.id_pago}, 201
+
+
+class VistaTarjeta(Resource):
     @jwt_required()
-    def delete(self, id_pago):
-        pago = Pago.query.get(id_pago)
-        if not pago:
-            return {"message": "Pago no encontrado"}, 404
-
-        db.session.delete(pago)
+    def post(self):
+        datos = request.json
+        nueva_tarjeta = TarjetaDetalle(
+            id_pago=datos.get('id_pago'),
+            nombre_en_tarjeta=datos.get('nombre_en_tarjeta'),
+            numero_tarjeta=datos.get('numero_tarjeta'),
+            fecha_expiracion=datos.get('fecha_expiracion'),
+            cvv=datos.get('cvv')
+        )
+        db.session.add(nueva_tarjeta)
         db.session.commit()
-        return {"message": "Pago eliminado exitosamente"}, 200    
+        return {"message": "Detalles de tarjeta guardados exitosamente"}, 201
+
+class VistaTransferencia(Resource):
+    @jwt_required()
+    def post(self):
+        datos = request.json
+        nueva_transferencia = TransferenciaDetalle(
+            id_pago=datos.get('id_pago'),
+            nombre_titular=datos.get('nombre_titular'),  # Ahora se espera el nombre del titular
+            banco_origen=datos.get('banco_origen'),
+            numero_cuenta=datos.get('numero_cuenta'),
+            comprobante_url=datos.get('comprobante_url')  # Si es que se incluye
+        )
+        db.session.add(nueva_transferencia)
+        db.session.commit()
+        return {"message": "Detalles de transferencia guardados exitosamente"}, 201
+
+class VistaPaypal(Resource):
+    @jwt_required()
+    def post(self):
+        datos = request.json
+        nuevo_paypal = PaypalDetalle(
+            id_pago=datos.get('id_pago'),
+            email_paypal=datos.get('email_paypal'),  # Corregido el nombre
+            confirmacion_id=datos.get('confirmacion_id')  # Corregido el nombre
+        )
+        db.session.add(nuevo_paypal)
+        db.session.commit()
+        return {"message": "Detalles de PayPal guardados exitosamente"}, 201
+
+
 
 class VistaRolUsuario(Resource):
     @jwt_required()
@@ -795,3 +900,31 @@ class VistaRolUsuario(Resource):
             return {'rol_id': usuario.rol_id}, 200
         else:
             return {'message': 'Usuario no encontrado'}, 404
+
+
+class VistaProductosRecomendados(Resource):
+    @jwt_required()
+    def get(self):
+        # Obtener el usuario desde el token JWT
+        user_id = get_jwt_identity()
+
+        # Obtener el carrito no procesado del usuario
+        carrito = Carrito.query.filter_by(id_usuario=user_id, procesado=False).first()
+
+        # Si el usuario no tiene un carrito activo, devolvemos todos los productos
+        if not carrito:
+            productos = Producto.query.all()
+        else:
+            # Obtener los productos que NO están en el carrito
+            productos = Producto.query.filter(
+                ~Producto.id_producto.in_(
+                    db.session.query(CarritoProducto.id_producto)
+                    .join(Carrito, Carrito.id_carrito == CarritoProducto.id_carrito)
+                    .filter(Carrito.id_usuario == user_id)
+                )
+            ).all()
+
+        # Convertir los productos a una lista de diccionarios
+        productos_lista = ProductoSchema(many=True).dump(productos)
+
+        return productos_lista, 200

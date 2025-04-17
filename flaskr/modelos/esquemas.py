@@ -1,6 +1,6 @@
 from marshmallow_sqlalchemy import SQLAlchemyAutoSchema
 from marshmallow import fields
-from .modelo import DetalleFactura, Carrito, Factura, Orden, Pago, Producto, Rol, Usuario, Categoria, Envio, CarritoProducto
+from .modelo import DetalleFactura, Carrito, Factura, Orden, Pago, PaypalDetalle, TransferenciaDetalle, TarjetaDetalle, Producto, Rol, Usuario, Categoria, Envio, CarritoProducto
 
 # Esquemas
 
@@ -11,10 +11,56 @@ class DetalleFacturaSchema(SQLAlchemyAutoSchema):
         include_relationships = True
         load_instance = True
 
+class PagoSchema(SQLAlchemyAutoSchema):
+    class Meta:
+        model = Pago
+        include_relationships = True
+        load_instance = True
 
+    id_pago = fields.Int(dump_only=True)
+    id_carrito = fields.Int(required=True)
+    monto = fields.Int(required=True)
+    fecha_pago = fields.DateTime(dump_only=True)
+    metodo_pago = fields.Str(required=True)
+    estado = fields.Str(dump_only=True)
 
+class PaypalDetalleSchema(SQLAlchemyAutoSchema):
+    class Meta:
+        model = PaypalDetalle
+        include_fk = True
+        load_instance = True
 
+    id_paypal = fields.Int(dump_only=True)
+    id_pago = fields.Int(required=True)
+    email_paypal = fields.Email(required=True)
+    confirmacion_id = fields.Str()
 
+class TransferenciaDetalleSchema(SQLAlchemyAutoSchema):
+    class Meta:
+        model = TransferenciaDetalle
+        include_fk = True
+        load_instance = True
+
+    id_transferencia = fields.Int(dump_only=True)
+    id_pago = fields.Int(required=True)
+    nombre_titular = fields.Str(required=True)
+    banco_origen = fields.Str(required=True)
+    numero_cuenta = fields.Str(required=True)
+    comprobante_url = fields.Str()
+    fecha_transferencia = fields.DateTime(dump_only=True)
+
+class TarjetaDetalleSchema(SQLAlchemyAutoSchema):
+    class Meta:
+        model = TarjetaDetalle
+        include_fk = True
+        load_instance = True
+
+    id_tarjeta = fields.Int(dump_only=True)
+    id_pago = fields.Int(required=True)
+    numero_tarjeta_hash = fields.Str(dump_only=True)
+    nombre_en_tarjeta = fields.Str(required=True)
+    cvv_hash = fields.Str(dump_only=True)
+    fecha_expiracion = fields.Str(required=True)
 
 class FacturaSchema(SQLAlchemyAutoSchema):
     class Meta:

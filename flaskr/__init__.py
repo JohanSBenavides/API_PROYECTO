@@ -10,9 +10,9 @@ from werkzeug.utils import secure_filename
 from .modelos.modelo import db
 from werkzeug.security import generate_password_hash
 from .vistas.vistas import (
-    VistaUsuario, VistaProductos, VistaProducto, VistaCategorias, VistaCategoria, VistaUsuarios, VistaLogin, VistaSignIn, 
+    VistaUsuario, VistaProductos, VistaProducto, VistaTarjeta, VistaPaypal, VistaTransferencia, VistaProductosRecomendados,VistaCategorias, VistaCategoria, VistaUsuarios, VistaLogin, VistaSignIn, 
     VistaCarrito, VistaCarritos, VistaDetalleFactura, VistaDetalleFacturas, VistaCarritoActivo, VistaRolUsuario,
-    VistaEnvio, VistaEnvios, VistaFactura, VistaFacturas, VistaOrden, VistaOrdenes, VistaPago, VistaPagos, VistaPerfilUsuario
+    VistaEnvio, VistaEnvios, VistaFactura, VistaFacturas, VistaOrden, VistaOrdenes, VistaPago, VistaPerfilUsuario
 )
 
 def create_app(config_name='default'):
@@ -77,10 +77,13 @@ def create_app(config_name='default'):
     api.add_resource(VistaDetalleFactura, '/detalle_factura/<int:id_detalle_factura>')
     api.add_resource(VistaEnvios, '/envio')
     api.add_resource(VistaEnvio, '/envio/<int:id_envio>')
-    api.add_resource(VistaPagos, '/pago')
-    api.add_resource(VistaPago, '/pago/<int:id_pago>')
+    api.add_resource(VistaPago, '/pago')
+    api.add_resource(VistaTarjeta, '/pago/tarjeta')
+    api.add_resource(VistaTransferencia, '/pago/transferencia')
+    api.add_resource(VistaPaypal, '/pago/paypal')
     api.add_resource(VistaPerfilUsuario, '/perfil')
     api.add_resource(VistaRolUsuario, '/usuario/rol')
+    api.add_resource(VistaProductosRecomendados, '/productos/recomendados')
 
 
 

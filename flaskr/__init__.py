@@ -6,14 +6,19 @@ from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager, jwt_required
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
+from flask_mail import Mail  # <--- importamos Mail
 
 from .modelos.modelo import db
 from werkzeug.security import generate_password_hash
 from .vistas.vistas import (
-    VistaUsuario, VistaProductos, VistaProducto, VistaTarjeta, VistaPaypal, VistaTransferencia, VistaProductosRecomendados,VistaCategorias, VistaCategoria, VistaUsuarios, VistaLogin, VistaSignIn, 
-    VistaCarrito, VistaCarritos, VistaDetalleFactura, VistaDetalleFacturas, VistaCarritoActivo, VistaRolUsuario,
-    VistaEnvio, VistaEnvios, VistaFactura, VistaFacturas, VistaOrden, VistaOrdenes, VistaPago, VistaPerfilUsuario
+    VistaUsuario, VistaProductos, VistaProducto, VistaTarjeta, VistaPaypal, VistaTransferencia, VistaProductosRecomendados,
+    VistaCategorias, VistaCategoria, VistaUsuarios, VistaLogin, VistaSignIn, 
+    VistaCarrito, VistaCarritos, VistaCarritoActivo, VistaRolUsuario,
+    VistaPago, VistaPerfilUsuario, VistaFactura, VistaDetalleFactura
 )
+
+# ✅ Creamos mail a nivel global
+mail = Mail()
 
 def create_app(config_name='default'):
     app = Flask(__name__)
@@ -23,33 +28,39 @@ def create_app(config_name='default'):
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     # Configuración para la subida de imágenes
-    app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static/uploads')  # Ruta de las imágenes
-    app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}  # Extensiones permitidas
+    app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static/uploads')
+    app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
 
-    # Asegurarse de que la carpeta de subidas existe
     if not os.path.exists(app.config['UPLOAD_FOLDER']):
         os.makedirs(app.config['UPLOAD_FOLDER'])
 
-    # Ruta para servir las imágenes desde el servidor
     @app.route('/uploads/<filename>')
     def uploaded_file(filename):
         return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
     # Inicialización de la base de datos y migración
     db.init_app(app)
-    migrate = Migrate(app, db)  # Inicializa Flask-Migrate
+    migrate = Migrate(app, db)
 
     # Configuración de JWT
-    app.config['JWT_SECRET_KEY'] = 'clave_secreta'  # Cambia esto por una clave más segura
-    jwt = JWTManager(app)  # Inicializa JWT para autenticar las peticiones
+    app.config['JWT_SECRET_KEY'] = 'clave_secreta'
+    jwt = JWTManager(app)
 
-    # Habilita CORS para permitir solicitudes de otros dominios
+    # ✅ Configuración de Flask-Mail
+    app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+    app.config['MAIL_PORT'] = 587
+    app.config['MAIL_USE_TLS'] = True
+    app.config['MAIL_DEBUG'] = True
+    app.config['MAIL_USERNAME'] = 'dilanf1506@gmail.com'
+    app.config['MAIL_PASSWORD'] = 'zycb icwa fxby yocj'
+    app.config['MAIL_DEFAULT_SENDER'] = 'dilanf1506@gmail.com'
+
+    mail.init_app(app)  # ✅ Inicializamos el objeto mail con la app
+
     CORS(app)
 
-    # Inicialización de las vistas
+    # Rutas de la API
     api = Api(app)
-
-    # Rutas para usuarios, productos, categorías, etc.
     api.add_resource(VistaUsuario, '/usuario/<int:id_usuario>')
     api.add_resource(VistaUsuarios, '/usuarios')
     api.add_resource(VistaProducto, '/productos/<int:id_producto>')
@@ -59,24 +70,10 @@ def create_app(config_name='default'):
     api.add_resource(VistaLogin, '/login')
     api.add_resource(VistaSignIn, '/signin')
     api.add_resource(VistaCarritos, '/carritos')
-    # Ruta para obtener o crear un carrito
     api.add_resource(VistaCarrito, '/carrito', endpoint='vista_carrito')
-    # Ruta para manejar productos dentro de un carrito específico
     api.add_resource(VistaCarrito, '/carrito/<int:id_carrito>/producto', endpoint='vista_carrito_producto')
-    # Ruta para obtener o eliminar un carrito específico
     api.add_resource(VistaCarrito, '/carrito/<int:id_carrito>', endpoint='vista_carrito_detalle')
-    #OBTENER CARRITO ACTIVO
     api.add_resource(VistaCarritoActivo, '/carrito/activo', endpoint='vista_carrito_activo')
-
-
-    api.add_resource(VistaFacturas, '/factura')
-    api.add_resource(VistaFactura, '/factura/<int:id_factura>')
-    api.add_resource(VistaOrdenes, '/orden')
-    api.add_resource(VistaOrden, '/orden/<int:id_orden>')
-    api.add_resource(VistaDetalleFacturas, '/detalle_factura')
-    api.add_resource(VistaDetalleFactura, '/detalle_factura/<int:id_detalle_factura>')
-    api.add_resource(VistaEnvios, '/envio')
-    api.add_resource(VistaEnvio, '/envio/<int:id_envio>')
     api.add_resource(VistaPago, '/pago')
     api.add_resource(VistaTarjeta, '/pago/tarjeta')
     api.add_resource(VistaTransferencia, '/pago/transferencia')
@@ -84,8 +81,7 @@ def create_app(config_name='default'):
     api.add_resource(VistaPerfilUsuario, '/perfil')
     api.add_resource(VistaRolUsuario, '/usuario/rol')
     api.add_resource(VistaProductosRecomendados, '/productos/recomendados')
-
-
-
+    api.add_resource(VistaFactura, '/factura')
+    api.add_resource(VistaDetalleFactura, '/detallefactura')
 
     return app

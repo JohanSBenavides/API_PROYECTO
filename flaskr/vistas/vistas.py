@@ -3,6 +3,10 @@ from werkzeug.utils import secure_filename
 from datetime import datetime
 from flask import request, jsonify
 from flask_restful import Resource
+from flask_mail import Message
+from flask import current_app
+from flask import request, render_template
+from flask import render_template
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from ..modelos import db, Usuario, TarjetaDetalle, TransferenciaDetalle, PaypalDetalle, Producto, Categoria, CarritoProductoSchema, CarritoProducto, Rol, UsuarioSchema, ProductoSchema, CategoriaSchema, RolSchema, PagoSchema, EnvioSchema, OrdenSchema, CarritoSchema, FacturaSchema, DetalleFacturaSchema, DetalleFactura, Factura, Pago, Orden, Envio, Carrito
 
@@ -566,182 +570,6 @@ class VistaCarritoActivo(Resource):
             "productos": productos_carrito
         }, 200
 
-
-
-class VistaFacturas(Resource):
-    @jwt_required()
-    def get(self):
-        facturas = Factura.query.all()
-        return [factura_schema.dump(factura) for factura in facturas], 200
-
-    @jwt_required()
-    def post(self):
-        nueva_factura = Factura(
-            id_orden=request.json['id_orden'],
-            factura_fecha=request.json['factura_fecha'],
-            monto_total=request.json['monto_total']
-        )
-        db.session.add(nueva_factura)
-        db.session.commit()
-        return {"message": "Factura creada exitosamente"}, 201
- 
-
-class VistaFactura(Resource):
-    @jwt_required()
-    def put(self, id_factura):
-        factura = Factura.query.get(id_factura)
-        if not factura:
-            return {"message": "Factura no encontrada"}, 404
-
-        factura.id_orden = request.json.get('id_orden', factura.id_orden)
-        factura.factura_fecha = request.json.get('factura_fecha', factura.factura_fecha)
-        factura.monto_total = request.json.get('monto_total', factura.monto_total)
-
-        db.session.commit()
-        return factura_schema.dump(factura), 200
-
-    @jwt_required()
-    def delete(self, id_factura):
-        factura = Factura.query.get(id_factura)
-        if not factura:
-            return {"message": "Factura no encontrada"}, 404
-
-        db.session.delete(factura)
-        db.session.commit()
-        return {"message": "Factura eliminada exitosamente"}, 200
-
-class VistaOrdenes(Resource):
-    @jwt_required()
-    def get(self):
-        ordenes = Orden.query.all()
-        return [orden_schema.dump(orden) for orden in ordenes], 200
-
-    @jwt_required()
-    def post(self):
-        nueva_orden = Orden(
-            id_usuario=request.json['id_usuario'],
-            fecha_orden=request.json['fecha_orden'],
-            monto_total=request.json['monto_total'],
-            estado=request.json['estado']
-        )
-        db.session.add(nueva_orden)
-        db.session.commit()
-        return {"message": "Orden creada exitosamente"}, 201
-
-class VistaOrden(Resource):
-    @jwt_required()
-    def put(self, id_orden):
-        orden = Orden.query.get(id_orden)
-        if not orden:
-            return {"message": "Orden no encontrada"}, 404
-
-        orden.id_usuario = request.json.get('id_usuario', orden.id_usuario)
-        orden.fecha_orden = request.json.get('fecha_orden', orden.fecha_orden)
-        orden.monto_total = request.json.get('monto_total', orden.monto_total)
-        orden.estado = request.json.get('estado', orden.estado)
-
-        db.session.commit()
-        return orden_schema.dump(orden), 200
-
-    @jwt_required()
-    def delete(self, id_orden):
-        orden = Orden.query.get(id_orden)
-        if not orden:
-            return {"message": "Orden no encontrada"}, 404
-
-        db.session.delete(orden)
-        db.session.commit()
-        return {"message": "Orden eliminada exitosamente"}, 200
-
-class VistaDetalleFacturas(Resource):
-    @jwt_required()
-    def get(self):
-        detalles = DetalleFactura.query.all()
-        return [detalle_factura_schema.dump(detalle) for detalle in detalles], 200
-
-    @jwt_required()
-    def post(self):
-        nuevo_detalle = DetalleFactura(
-            id_factura=request.json['id_factura'],
-            id_producto=request.json['id_producto'],
-            cantidad=request.json['cantidad'],
-            precio_unitario=request.json['precio_unitario']
-        )
-        db.session.add(nuevo_detalle)
-        db.session.commit()
-        return {"message": "Detalle de factura creado exitosamente"}, 201
-
-class VistaDetalleFactura(Resource):
-    @jwt_required()
-    def put(self, id_detalle_factura):
-        detalle = DetalleFactura.query.get(id_detalle_factura)
-        if not detalle:
-            return {"message": "Detalle no encontrado"}, 404
-
-        detalle.id_factura = request.json.get('id_factura', detalle.id_factura)
-        detalle.id_producto = request.json.get('id_producto', detalle.id_producto)
-        detalle.cantidad = request.json.get('cantidad', detalle.cantidad)
-        detalle.precio_unitario = request.json.get('precio_unitario', detalle.precio_unitario)
-
-        db.session.commit()
-        return detalle_factura_schema.dump(detalle), 200
-
-    @jwt_required()
-    def delete(self, id_detalle_factura):
-        detalle = DetalleFactura.query.get(id_detalle_factura)
-        if not detalle:
-            return {"message": "Detalle no encontrado"}, 404
-
-        db.session.delete(detalle)
-        db.session.commit()
-        return {"message": "Detalle eliminado exitosamente"}, 200
-
-class VistaEnvios(Resource):
-    @jwt_required()
-    def get(self):
-        envios = Envio.query.all()
-        return [envio_schema.dump(envio) for envio in envios], 200
-
-    @jwt_required()
-    def post(self):
-        nuevo_envio = Envio(
-            id_orden=request.json['id_orden'],
-            fecha_envio=request.json['fecha_envio'],
-            direccion=request.json['direccion'],
-            estado=request.json['estado'],
-            metodo_envio=request.json['metodo_envio']
-        )
-        db.session.add(nuevo_envio)
-        db.session.commit()
-        return {"message": "Envío creado exitosamente"}, 201
-
-class VistaEnvio(Resource):
-    @jwt_required()
-    def put(self, id_envio):
-        envio = Envio.query.get(id_envio)
-        if not envio:
-            return {"message": "Envío no encontrado"}, 404
-
-        envio.id_orden = request.json.get('id_orden', envio.id_orden)
-        envio.fecha_envio = request.json.get('fecha_envio', envio.fecha_envio)
-        envio.direccion = request.json.get('direccion', envio.direccion)
-        envio.estado = request.json.get('estado', envio.estado)
-        envio.metodo_envio = request.json.get('metodo_envio', envio.metodo_envio)
-
-        db.session.commit()
-        return envio_schema.dump(envio), 200
-
-    @jwt_required()
-    def delete(self, id_envio):
-        envio = Envio.query.get(id_envio)
-        if not envio:
-            return {"message": "Envío no encontrado"}, 404
-
-        db.session.delete(envio)
-        db.session.commit()
-        return {"message": "Envío eliminado exitosamente"}, 200
-
-
 class VistaPagos(Resource):
     @jwt_required()
     def get(self):
@@ -843,8 +671,7 @@ class VistaPago(Resource):
         db.session.add(nuevo_carrito)
         db.session.commit()
 
-        return {"message": "Pago creado exitosamente, productos actualizados y nuevo carrito creado", "id_pago": nuevo_pago.id_pago}, 201
-
+        return {"message": "Pago creado exitosamente, productos actualizados, nuevo carrito creado", "id_pago": nuevo_pago.id_pago}, 201
 
 class VistaTarjeta(Resource):
     @jwt_required()
@@ -928,3 +755,159 @@ class VistaProductosRecomendados(Resource):
         productos_lista = ProductoSchema(many=True).dump(productos)
 
         return productos_lista, 200
+
+
+
+
+class VistaFactura(Resource):
+    @jwt_required()
+    def post(self):
+        data = request.get_json()
+
+        if not data or 'id_pago' not in data:
+            return {"error": "Falta el campo 'id_pago' en el cuerpo JSON"}, 400
+
+        try:
+            # 1. Obtener el pago
+            pago = Pago.query.get(data['id_pago'])
+            if not pago:
+                return {"error": "Pago no encontrado"}, 404
+
+            # 2. Obtener el carrito asociado a ese pago
+            carrito = Carrito.query.get(pago.id_carrito)
+            if not carrito:
+                return {"error": "Carrito no encontrado para el pago"}, 404
+
+            # 3. Calcular el total de la factura sumando los productos en el carrito y redondearlo
+            total_factura = sum(cp.cantidad * cp.producto.producto_precio for cp in carrito.productos)
+            total_factura_int = int(total_factura)  # Convertimos el total a entero
+
+            # 4. Crear la factura
+            nueva_factura = Factura(
+                id_pago=pago.id_pago,
+                factura_fecha=datetime.utcnow(),
+                total=total_factura_int  # Asignamos el total como entero
+            )
+            db.session.add(nueva_factura)
+            db.session.flush()  # Para obtener el id_factura antes del commit
+
+            # 5. Crear detalles de factura por cada producto en el carrito
+            for cp in carrito.productos:  # Suponiendo relación: carrito.productos -> CarritoProducto
+                detalle = DetalleFactura(
+                    id_factura=nueva_factura.id_factura,
+                    id_producto=cp.producto.id_producto,
+                    cantidad=cp.cantidad,
+                    precio_unitario=cp.producto.producto_precio,
+                    monto_total=int(cp.cantidad * cp.producto.producto_precio)  # Convertimos el monto total a entero
+                )
+                db.session.add(detalle)
+
+            # 6. Confirmar todo
+            db.session.commit()
+
+            # Convertir la fecha a string con formato 'YYYY-MM-DD HH:MM:SS'
+            factura_fecha_str = nueva_factura.factura_fecha.strftime('%Y-%m-%d %H:%M:%S')
+
+            # 7. Obtener el correo del usuario asociado al pago
+            carrito = Carrito.query.get(pago.id_carrito)  # Obtener el carrito asociado al pago
+            if not carrito:
+                return {"error": "No se encontró el carrito asociado al pago"}, 404
+
+            usuario = Usuario.query.get(carrito.id_usuario)  # Obtener el usuario asociado al carrito
+            if not usuario or not usuario.correo:
+                return {"error": "No se encontró el correo electrónico del usuario"}, 404
+
+            # 8. Crear el mensaje de correo electrónico
+            msg = Message(
+                'Factura de Compra - PHPhone',  # Asunto
+                sender='dilanf1506@gmail.com',  # Correo del admin
+                recipients=[usuario.correo]  # Correo del usuario
+            )
+
+            factura_fecha_str = nueva_factura.factura_fecha.strftime('%Y-%m-%d %H:%M:%S')
+            total_factura_str = str(nueva_factura.total)
+
+            msg.html = render_template(
+                'factura_email.html',
+                factura_id=nueva_factura.id_factura,
+                factura_fecha=factura_fecha_str,
+                total=total_factura_str,
+                detalles=carrito.productos
+            )
+            from flaskr import mail 
+            # 9. Enviar el correo
+            mail.send(msg)
+
+            return {
+                "message": "Factura y detalles creados exitosamente, y correo enviado.",
+                "id_factura": nueva_factura.id_factura,
+                "factura_fecha": factura_fecha_str,
+                "total": total_factura_str  # Devolver el total como cadena
+            }, 201
+
+        except Exception as e:
+            db.session.rollback()
+            return {"error": f"Error al crear factura: {str(e)}"}, 500
+
+
+
+    @jwt_required()
+    def get(self):
+        facturas = Factura.query.all()
+        return [
+            {
+                "id_factura": factura.id_factura,
+                "id_pago": factura.id_pago,
+                "factura_fecha": factura.factura_fecha
+            } for factura in facturas
+        ], 200
+
+
+
+class VistaDetalleFactura(Resource):
+    @jwt_required()
+    def get(self):
+        detalles = DetalleFactura.query.all()
+        return [
+            {
+                "id_detalle_factura": detalle.id_detalle_factura,
+                "id_factura": detalle.id_factura,
+                "id_producto": detalle.id_producto,
+                "cantidad": detalle.cantidad,
+                "precio_unitario": detalle.precio_unitario,
+                "monto_total": detalle.monto_total
+            } for detalle in detalles
+        ], 200
+
+    @jwt_required()
+    def post(self):
+        data = request.get_json()
+
+        if not data:
+            return {"error": "No se envió un cuerpo JSON"}, 400
+
+        required_fields = ['id_factura', 'id_producto', 'cantidad', 'precio_unitario', 'monto_total']
+        for field in required_fields:
+            if field not in data:
+                return {"error": f"Falta el campo: {field}"}, 400
+
+        try:
+            nuevo_detalle = DetalleFactura(
+                id_factura=data['id_factura'],
+                id_producto=data['id_producto'],
+                cantidad=data['cantidad'],
+                precio_unitario=data['precio_unitario'],
+                monto_total=data['monto_total']
+            )
+
+            db.session.add(nuevo_detalle)
+            db.session.commit()
+
+            return {
+                "message": "Detalle de factura creado exitosamente",
+                "id_detalle_factura": nuevo_detalle.id_detalle_factura
+            }, 201
+
+        except Exception as e:
+            db.session.rollback()
+            return {"error": str(e)}, 500

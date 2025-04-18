@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: 2a03a0214ded
+Revision ID: 2f9223c4063e
 Revises: 
-Create Date: 2025-04-16 22:25:49.321725
+Create Date: 2025-04-17 22:01:31.202985
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '2a03a0214ded'
+revision = '2f9223c4063e'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -58,15 +58,6 @@ def upgrade():
     sa.ForeignKeyConstraint(['id_usuario'], ['usuario.id_usuario'], ),
     sa.PrimaryKeyConstraint('id_carrito')
     )
-    op.create_table('orden',
-    sa.Column('id_orden', sa.Integer(), nullable=False),
-    sa.Column('id_usuario', sa.Integer(), nullable=True),
-    sa.Column('fecha_orden', sa.DateTime(), nullable=True),
-    sa.Column('monto_total', sa.Integer(), nullable=False),
-    sa.Column('estado', sa.Enum('pendiente', 'procesando', 'pagada', 'enviada', 'cancelada', name='estado_orden'), nullable=True),
-    sa.ForeignKeyConstraint(['id_usuario'], ['usuario.id_usuario'], ),
-    sa.PrimaryKeyConstraint('id_orden')
-    )
     op.create_table('carrito_producto',
     sa.Column('id_carrito_producto', sa.Integer(), nullable=False),
     sa.Column('id_carrito', sa.Integer(), nullable=False),
@@ -75,21 +66,6 @@ def upgrade():
     sa.ForeignKeyConstraint(['id_carrito'], ['carrito.id_carrito'], ),
     sa.ForeignKeyConstraint(['id_producto'], ['producto.id_producto'], ),
     sa.PrimaryKeyConstraint('id_carrito_producto')
-    )
-    op.create_table('envio',
-    sa.Column('id_envio', sa.Integer(), nullable=False),
-    sa.Column('id_orden', sa.Integer(), nullable=True),
-    sa.Column('direccion', sa.String(length=255), nullable=False),
-    sa.Column('fecha', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['id_orden'], ['orden.id_orden'], ),
-    sa.PrimaryKeyConstraint('id_envio')
-    )
-    op.create_table('factura',
-    sa.Column('id_factura', sa.Integer(), nullable=False),
-    sa.Column('id_orden', sa.Integer(), nullable=True),
-    sa.Column('factura_fecha', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['id_orden'], ['orden.id_orden'], ),
-    sa.PrimaryKeyConstraint('id_factura')
     )
     op.create_table('pago',
     sa.Column('id_pago', sa.Integer(), nullable=False),
@@ -100,6 +76,43 @@ def upgrade():
     sa.Column('estado', sa.Enum('pendiente', 'completado', 'rechazado', name='estado_pago'), nullable=True),
     sa.ForeignKeyConstraint(['id_carrito'], ['carrito.id_carrito'], ),
     sa.PrimaryKeyConstraint('id_pago')
+    )
+    op.create_table('factura',
+    sa.Column('id_factura', sa.Integer(), nullable=False),
+    sa.Column('id_pago', sa.Integer(), nullable=True),
+    sa.Column('factura_fecha', sa.DateTime(), nullable=True),
+    sa.Column('total', sa.Integer(), nullable=True),
+    sa.ForeignKeyConstraint(['id_pago'], ['pago.id_pago'], ),
+    sa.PrimaryKeyConstraint('id_factura')
+    )
+    op.create_table('paypal_detalle',
+    sa.Column('id_paypal', sa.Integer(), nullable=False),
+    sa.Column('id_pago', sa.Integer(), nullable=True),
+    sa.Column('email_paypal', sa.String(length=150), nullable=False),
+    sa.Column('confirmacion_id', sa.String(length=255), nullable=True),
+    sa.ForeignKeyConstraint(['id_pago'], ['pago.id_pago'], ),
+    sa.PrimaryKeyConstraint('id_paypal')
+    )
+    op.create_table('tarjeta_detalle',
+    sa.Column('id_tarjeta', sa.Integer(), nullable=False),
+    sa.Column('id_pago', sa.Integer(), nullable=True),
+    sa.Column('numero_tarjeta_hash', sa.String(length=255), nullable=False),
+    sa.Column('nombre_en_tarjeta', sa.String(length=100), nullable=False),
+    sa.Column('cvv_hash', sa.String(length=255), nullable=False),
+    sa.Column('fecha_expiracion', sa.String(length=7), nullable=False),
+    sa.ForeignKeyConstraint(['id_pago'], ['pago.id_pago'], ),
+    sa.PrimaryKeyConstraint('id_tarjeta')
+    )
+    op.create_table('transferencia_detalle',
+    sa.Column('id_transferencia', sa.Integer(), nullable=False),
+    sa.Column('id_pago', sa.Integer(), nullable=True),
+    sa.Column('nombre_titular', sa.String(length=100), nullable=False),
+    sa.Column('banco_origen', sa.String(length=100), nullable=False),
+    sa.Column('numero_cuenta', sa.String(length=100), nullable=False),
+    sa.Column('comprobante_url', sa.String(length=255), nullable=True),
+    sa.Column('fecha_transferencia', sa.DateTime(), nullable=True),
+    sa.ForeignKeyConstraint(['id_pago'], ['pago.id_pago'], ),
+    sa.PrimaryKeyConstraint('id_transferencia')
     )
     op.create_table('detalle_factura',
     sa.Column('id_detalle_factura', sa.Integer(), nullable=False),
@@ -112,28 +125,39 @@ def upgrade():
     sa.ForeignKeyConstraint(['id_producto'], ['producto.id_producto'], ),
     sa.PrimaryKeyConstraint('id_detalle_factura')
     )
-    op.create_table('tarjeta_detalle',
-    sa.Column('id_tarjeta', sa.Integer(), nullable=False),
-    sa.Column('id_pago', sa.Integer(), nullable=True),
-    sa.Column('numero_tarjeta_hash', sa.String(length=255), nullable=False),
-    sa.Column('nombre_en_tarjeta', sa.String(length=100), nullable=False),
-    sa.Column('cvv_hash', sa.String(length=255), nullable=False),
-    sa.Column('fecha_expiracion', sa.String(length=7), nullable=False),
-    sa.ForeignKeyConstraint(['id_pago'], ['pago.id_pago'], ),
-    sa.PrimaryKeyConstraint('id_tarjeta')
+    op.create_table('orden',
+    sa.Column('id_orden', sa.Integer(), nullable=False),
+    sa.Column('id_usuario', sa.Integer(), nullable=True),
+    sa.Column('id_factura', sa.Integer(), nullable=True),
+    sa.Column('fecha_orden', sa.DateTime(), nullable=True),
+    sa.Column('monto_total', sa.Integer(), nullable=False),
+    sa.Column('estado', sa.Enum('pendiente', 'procesando', 'pagada', 'enviada', 'cancelada', name='estado_orden'), nullable=True),
+    sa.ForeignKeyConstraint(['id_factura'], ['factura.id_factura'], ),
+    sa.ForeignKeyConstraint(['id_usuario'], ['usuario.id_usuario'], ),
+    sa.PrimaryKeyConstraint('id_orden')
+    )
+    op.create_table('envio',
+    sa.Column('id_envio', sa.Integer(), nullable=False),
+    sa.Column('id_orden', sa.Integer(), nullable=True),
+    sa.Column('direccion', sa.String(length=255), nullable=False),
+    sa.Column('fecha', sa.DateTime(), nullable=True),
+    sa.ForeignKeyConstraint(['id_orden'], ['orden.id_orden'], ),
+    sa.PrimaryKeyConstraint('id_envio')
     )
     # ### end Alembic commands ###
 
 
 def downgrade():
     # ### commands auto generated by Alembic - please adjust! ###
-    op.drop_table('tarjeta_detalle')
-    op.drop_table('detalle_factura')
-    op.drop_table('pago')
-    op.drop_table('factura')
     op.drop_table('envio')
-    op.drop_table('carrito_producto')
     op.drop_table('orden')
+    op.drop_table('detalle_factura')
+    op.drop_table('transferencia_detalle')
+    op.drop_table('tarjeta_detalle')
+    op.drop_table('paypal_detalle')
+    op.drop_table('factura')
+    op.drop_table('pago')
+    op.drop_table('carrito_producto')
     op.drop_table('carrito')
     op.drop_table('usuario')
     op.drop_table('rol')

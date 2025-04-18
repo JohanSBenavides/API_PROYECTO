@@ -23,7 +23,7 @@ def seed_roles():
             superadmin = Usuario(
                 nombre="Super Admin",
                 numerodoc=1013598175,
-                correo="dilanf@gmail.com",  
+                correo="dilanf1506@gmail.com",  
                 contrasena="superadmin123", 
                 rol_id=1  
             )

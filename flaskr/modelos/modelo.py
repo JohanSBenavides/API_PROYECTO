@@ -152,8 +152,13 @@ class TarjetaDetalle(db.Model):
 class Factura(db.Model):
     __tablename__ = 'factura'
     id_factura = db.Column(db.Integer, primary_key=True)
-    id_orden = db.Column(db.Integer, db.ForeignKey('orden.id_orden'))
+    id_pago = db.Column(db.Integer, db.ForeignKey('pago.id_pago'))
     factura_fecha = db.Column(db.DateTime, default=db.func.now())
+    total = db.Column(db.Integer)  # Usamos Integer para almacenar el total como entero
+
+    # Relación con la tabla DetalleFactura (uno a muchos)
+    detalles = db.relationship('DetalleFactura', backref='factura', lazy=True)
+
 
 
 class DetalleFactura(db.Model):
@@ -169,6 +174,7 @@ class Orden(db.Model):
     __tablename__ = 'orden'
     id_orden = db.Column(db.Integer, primary_key=True)
     id_usuario = db.Column(db.Integer, db.ForeignKey('usuario.id_usuario'))
+    id_factura = db.Column(db.Integer, db.ForeignKey('factura.id_factura'))
     fecha_orden = db.Column(db.DateTime, default=db.func.now())
     monto_total = db.Column(db.Integer, nullable=False)
     estado = db.Column(db.Enum('pendiente', 'procesando', 'pagada', 'enviada', 'cancelada', name='estado_orden'), default='pendiente')

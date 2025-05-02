@@ -50,7 +50,7 @@ class Producto(db.Model):
 
     id_producto = db.Column(db.Integer, primary_key=True)
     producto_nombre = db.Column(db.String(100), nullable=False)
-    producto_precio = db.Column(db.Float, nullable=False)
+    producto_precio = db.Column(db.Integer, nullable=False)
     producto_stock = db.Column(db.Integer, nullable=False)
     descripcion = db.Column(db.String(255), nullable=False)
     producto_foto = db.Column(db.String(100), nullable=False)
@@ -187,7 +187,7 @@ class Orden(db.Model):
     monto_total = db.Column(db.Integer, nullable=False)
     estado = db.Column(
         db.Enum('pendiente', 'procesando', 'pagada', 'enviada', 'cancelada', name='estado_orden'),
-        default='pendiente'
+        default='enviada'
     )
 
 
@@ -205,3 +205,15 @@ class Envio(db.Model):
 
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuario.id_usuario'), nullable=False)
     usuario = db.relationship('Usuario', back_populates='envios')
+
+
+# chatbot y demas
+class ConversacionIA(db.Model):
+    __tablename__ = 'conversaciones_ia'
+    id = Column(Integer, primary_key=True)
+    usuario_id = Column(Integer, ForeignKey('usuarios.id'), nullable=True)
+    mensaje_usuario = Column(Text, nullable=False)
+    respuesta_bot = Column(Text, nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+    usuario = relationship('Usuario', back_populates='conversaciones')

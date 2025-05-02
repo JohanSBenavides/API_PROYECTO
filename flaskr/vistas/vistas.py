@@ -1,4 +1,5 @@
 import os
+import pytz
 from werkzeug.utils import secure_filename
 from datetime import datetime
 from flask import request, jsonify
@@ -7,19 +8,26 @@ from flask_mail import Message
 from flask import current_app
 from flask import request, render_template
 from flask import render_template
+from flaskr.modelos.esquemas import PaypalDetalleSchema, TransferenciaDetalleSchema, TarjetaDetalleSchema, FacturaSchema, ConversacionIASchema
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-from ..modelos import db, Usuario, TarjetaDetalle, TransferenciaDetalle, PaypalDetalle, Producto, Categoria, CarritoProductoSchema, CarritoProducto, Rol, UsuarioSchema, ProductoSchema, CategoriaSchema, RolSchema, PagoSchema, EnvioSchema, OrdenSchema, CarritoSchema, FacturaSchema, DetalleFacturaSchema, DetalleFactura, Factura, Pago, Orden, Envio, Carrito
+from ..modelos import db, Usuario, TarjetaDetalle, TransferenciaDetalle, PaypalDetalle, Producto, Categoria, CarritoProductoSchema, CarritoProducto, Rol, UsuarioSchema, ProductoSchema, CategoriaSchema, RolSchema, PagoSchema, EnvioSchema, OrdenSchema, CarritoSchema, FacturaSchema, DetalleFacturaSchema, DetalleFactura, Factura, Pago, Orden, Envio, Carrito, ConversacionIA
+from chatbot_local import responder_mensaje
 
 # Uso de los schemas creados en modelos
 usuario_schema = UsuarioSchema()
 producto_schema = ProductoSchema()
 categoria_schema = CategoriaSchema()
 carrito_schema = CarritoSchema()
-factura_schema = FacturaSchema()
+facturas_schema = FacturaSchema(many=True)
 orden_schema = OrdenSchema()
 detalle_factura_schema = DetalleFacturaSchema()
 envio_schema = EnvioSchema()
 pago_schema = PagoSchema()
+carrito_producto_schema = CarritoProductoSchema(many=True)
+paypal_schema = PaypalDetalleSchema()
+transferencia_schema = TransferenciaDetalleSchema()
+tarjeta_schema = TarjetaDetalleSchema()
+
 
 
 #insercion de productos con imagenees de manera local
@@ -402,28 +410,24 @@ class VistaCarritos(Resource):
         carritos = Carrito.query.all()
         return [carrito_schema.dump(carrito) for carrito in carritos], 200
 
+class VistaCarritoProducto(Resource):
     @jwt_required()
-    def post(self):
-        # Obtener el id_usuario desde el token
-        user_id = get_jwt_identity()  # Esto recupera el id del usuario desde el JWT
+    def get(self, id_carrito):
+        """
+        Obtener los productos de un carrito específico
+        """
+        # Buscar los productos asociados al carrito
+        productos = CarritoProducto.query.filter_by(id_carrito=id_carrito).all()
         
-        if not user_id:
-            return {"error": "No se pudo obtener el usuario del token"}, 400
+        # Si no hay productos, responder con un mensaje adecuado
+        if not productos:
+            return {'message': 'No hay productos en este carrito'}, 404
+        
+        # Devolver los productos encontrados
+        return carrito_producto_schema.dump(productos), 200
 
-        # Crear un nuevo carrito con la información recibida
-        nuevo_carrito = Carrito(
-            id_usuario=user_id,  # El id_usuario se obtiene del token
-            fecha=db.func.now(),  # Fecha automática
-            total = 0
-        )
 
-        try:
-            db.session.add(nuevo_carrito)
-            db.session.commit()
-            return {"message": "Carrito creado exitosamente", "cart_id": nuevo_carrito.id_carrito}, 201
-        except Exception as e:
-            db.session.rollback()
-            return {"error": str(e)}, 500
+            
 class VistaCarrito(Resource):
     # Crear un nuevo carrito de compras o ver el carrito de un usuario existente
     @jwt_required()
@@ -576,40 +580,37 @@ class VistaPagos(Resource):
         pagos = Pago.query.all()
         return [pago_schema.dump(pago) for pago in pagos], 200
 
+class VistaFacturas(Resource):
     @jwt_required()
-    def post(self):
-        data = request.get_json()
+    def get(self):
+        facturas = Factura.query.all()
+        return facturas_schema.dump(facturas), 200
 
-        # Verificar que todos los campos necesarios estén presentes
-        if not data:
-            return {"error": "No se envió un cuerpo JSON"}, 400
-        
-        # Validar los campos requeridos
-        required_fields = ['id_carrito', 'fecha_pago', 'monto', 'metodo_pago', 'estado']
-        for field in required_fields:
-            if field not in data:
-                return {"error": f"Falta el campo: {field}"}, 400
 
-        try:
-            # Crear el objeto Pago
-            nuevo_pago = Pago(
-                id_carrito=data['id_carrito'],
-                fecha_pago=data['fecha_pago'],
-                monto=data['monto'],
-                metodo_pago=data['metodo_pago'],
-                estado=data['estado']
-            )
-            
-            # Agregar el nuevo pago a la sesión de la base de datos
-            db.session.add(nuevo_pago)
-            db.session.commit()
 
-            return {"message": "Pago creado exitosamente"}, 201
-        
-        except Exception as e:
-            db.session.rollback()
-            return {"error": str(e)}, 500
+class VistaPagoTarjeta(Resource):
+    @jwt_required()
+    def get(self, id_pago):
+        tarjeta = TarjetaDetalle.query.filter_by(id_pago=id_pago).first()
+        if not tarjeta:
+            return {"message": "Detalles de tarjeta no encontrados"}, 404
+        return tarjeta_schema.dump(tarjeta), 200
 
+class VistaPagoTransferencia(Resource):
+    @jwt_required()
+    def get(self, id_pago):
+        transferencia = TransferenciaDetalle.query.filter_by(id_pago=id_pago).first()
+        if not transferencia:
+            return {"message": "Detalles de transferencia no encontrados"}, 404
+        return transferencia_schema.dump(transferencia), 200
+
+class VistaPagoPaypal(Resource):
+    @jwt_required()
+    def get(self, id_pago):
+        paypal = PaypalDetalle.query.filter_by(id_pago=id_pago).first()
+        if not paypal:
+            return {"message": "Detalles de PayPal no encontrados"}, 404
+        return paypal_schema.dump(paypal), 200
 
 class VistaPago(Resource):
     @jwt_required()
@@ -757,8 +758,6 @@ class VistaProductosRecomendados(Resource):
         return productos_lista, 200
 
 
-
-
 class VistaFactura(Resource):
     @jwt_required()
     def post(self):
@@ -782,12 +781,16 @@ class VistaFactura(Resource):
             total_factura = sum(cp.cantidad * cp.producto.producto_precio for cp in carrito.productos)
             total_factura_int = int(total_factura)  # Convertimos el total a entero
 
-            # 4. Crear la factura
+            # 4. Crear la factura con hora de Bogotá
+            bogota_timezone = pytz.timezone('America/Bogota')
+            fecha_bogota = datetime.now(bogota_timezone)
+
             nueva_factura = Factura(
                 id_pago=pago.id_pago,
-                factura_fecha=datetime.utcnow(),
+                factura_fecha=fecha_bogota,
                 total=total_factura_int  # Asignamos el total como entero
             )
+
             db.session.add(nueva_factura)
             db.session.flush()  # Para obtener el id_factura antes del commit
 
@@ -805,9 +808,6 @@ class VistaFactura(Resource):
             # 6. Confirmar todo
             db.session.commit()
 
-            # Convertir la fecha a string con formato 'YYYY-MM-DD HH:MM:SS'
-            factura_fecha_str = nueva_factura.factura_fecha.strftime('%Y-%m-%d %H:%M:%S')
-
             # 7. Obtener el correo del usuario asociado al pago
             carrito = Carrito.query.get(pago.id_carrito)  # Obtener el carrito asociado al pago
             if not carrito:
@@ -824,15 +824,17 @@ class VistaFactura(Resource):
                 recipients=[usuario.correo]  # Correo del usuario
             )
 
+            # Convertir la fecha y total a string con formato 'YYYY-MM-DD HH:MM:SS'
             factura_fecha_str = nueva_factura.factura_fecha.strftime('%Y-%m-%d %H:%M:%S')
-            total_factura_str = str(nueva_factura.total)
+            total_factura_str = f"${total_factura_int:,.0f}"  # Formatear el total con signo de pesos y miles
 
+            # 9. Enviar el correo
             msg.html = render_template(
                 'factura_email.html',
                 factura_id=nueva_factura.id_factura,
                 factura_fecha=factura_fecha_str,
-                total=total_factura_str,
-                detalles=carrito.productos
+                total=total_factura_int,  # Aquí mandamos el total formateado
+                detalles=carrito.productos  # Enviamos los productos también
             )
             from flaskr import mail 
             # 9. Enviar el correo
@@ -842,12 +844,13 @@ class VistaFactura(Resource):
                 "message": "Factura y detalles creados exitosamente, y correo enviado.",
                 "id_factura": nueva_factura.id_factura,
                 "factura_fecha": factura_fecha_str,
-                "total": total_factura_str  # Devolver el total como cadena
+                "total": total_factura_str  # Devolver el total formateado como cadena
             }, 201
 
         except Exception as e:
             db.session.rollback()
             return {"error": f"Error al crear factura: {str(e)}"}, 500
+
 
 
 
@@ -863,11 +866,18 @@ class VistaFactura(Resource):
         ], 200
 
 
-
 class VistaDetalleFactura(Resource):
     @jwt_required()
-    def get(self):
-        detalles = DetalleFactura.query.all()
+    def get(self, id_factura=None):
+        if id_factura:
+            # Buscar detalles de factura por id_factura
+            detalles = DetalleFactura.query.filter_by(id_factura=id_factura).all()
+            if not detalles:
+                return {"message": "No se encontraron detalles para esta factura"}, 404
+        else:
+            # Obtener todos los detalles de facturas
+            detalles = DetalleFactura.query.all()
+
         return [
             {
                 "id_detalle_factura": detalle.id_detalle_factura,
@@ -891,6 +901,16 @@ class VistaDetalleFactura(Resource):
             if field not in data:
                 return {"error": f"Falta el campo: {field}"}, 400
 
+        # Validar que cantidad, precio_unitario y monto_total sean valores numéricos positivos
+        if not isinstance(data['cantidad'], (int, float)) or data['cantidad'] <= 0:
+            return {"error": "La cantidad debe ser un número positivo"}, 400
+
+        if not isinstance(data['precio_unitario'], (int, float)) or data['precio_unitario'] <= 0:
+            return {"error": "El precio unitario debe ser un número positivo"}, 400
+
+        if not isinstance(data['monto_total'], (int, float)) or data['monto_total'] <= 0:
+            return {"error": "El monto total debe ser un número positivo"}, 400
+
         try:
             nuevo_detalle = DetalleFactura(
                 id_factura=data['id_factura'],
@@ -911,7 +931,7 @@ class VistaDetalleFactura(Resource):
         except Exception as e:
             db.session.rollback()
             return {"error": str(e)}, 500
-
+        
 class VistaEnvio(Resource):
     @jwt_required()
     def post(self):
@@ -925,7 +945,6 @@ class VistaEnvio(Resource):
         if not datos_envio:
             return {"message": "No se recibieron datos en el cuerpo de la solicitud"}, 400
 
-        # Validación de campos requeridos
         campos_requeridos = ['direccion', 'ciudad', 'departamento', 'codigo_postal', 'pais']
         campos_faltantes = [campo for campo in campos_requeridos if campo not in datos_envio or not datos_envio[campo]]
 
@@ -933,21 +952,44 @@ class VistaEnvio(Resource):
             return {"message": f"Faltan los siguientes campos requeridos: {', '.join(campos_faltantes)}"}, 400
 
         try:
+            # 1. Crear el envío
             nuevo_envio = Envio(
                 direccion=datos_envio['direccion'],
                 ciudad=datos_envio['ciudad'],
-                departamento=datos_envio['departamento'],  # <-- nuevo campo
+                departamento=datos_envio['departamento'],
                 codigo_postal=datos_envio['codigo_postal'],
                 pais=datos_envio['pais'],
                 estado_envio=datos_envio.get('estado_envio', 'En camino a tu hogar'),
                 usuario_id=id_usuario
             )
-
             db.session.add(nuevo_envio)
+
+            # 2. Obtener la factura más reciente del usuario
+            factura_reciente = Factura.query\
+                .join(Pago, Factura.id_pago == Pago.id_pago)\
+                .join(Carrito, Pago.id_carrito == Carrito.id_carrito)\
+                .filter(Carrito.id_usuario == id_usuario)\
+                .order_by(Factura.factura_fecha.desc())\
+                .first()
+
+            if not factura_reciente:
+                db.session.rollback()
+                return {"error": "No se encontró una factura reciente para el usuario"}, 404
+
+            # 3. Crear la orden vinculada a esa factura
+            nueva_orden = Orden(
+                id_usuario=id_usuario,
+                id_factura=factura_reciente.id_factura,
+                monto_total=factura_reciente.total,
+                estado='pendiente'  # O puedes omitirlo si ya lo toma por defecto
+            )
+            db.session.add(nueva_orden)
+
+            # 4. Confirmar los cambios
             db.session.commit()
 
             return {
-                "mensaje": "Datos de envío guardados exitosamente",
+                "mensaje": "Datos de envío y orden guardados exitosamente",
                 "envio": {
                     "id": nuevo_envio.id,
                     "direccion": nuevo_envio.direccion,
@@ -957,9 +999,53 @@ class VistaEnvio(Resource):
                     "pais": nuevo_envio.pais,
                     "estado_envio": nuevo_envio.estado_envio,
                     "usuario_id": nuevo_envio.usuario_id
+                },
+                "orden": {
+                    "id_orden": nueva_orden.id_orden,
+                    "id_factura": nueva_orden.id_factura,
+                    "monto_total": nueva_orden.monto_total,
+                    "estado": nueva_orden.estado,
+                    "fecha_orden": nueva_orden.fecha_orden.strftime('%Y-%m-%d %H:%M:%S')
                 }
             }, 201
 
         except Exception as e:
             db.session.rollback()
-            return {"error": f"Ocurrió un error al guardar los datos de envío: {str(e)}"}, 500
+            return {"error": f"Ocurrió un error al guardar los datos de envío y orden: {str(e)}"}, 500
+
+
+class Chatbot(Resource):
+    @jwt_required()  # Requiere autenticación JWT
+    def post(self):
+        # Obtener el usuario actual del JWT
+        usuario_actual = get_jwt_identity()
+
+        # Obtener el mensaje del usuario desde el cuerpo de la solicitud
+        data = request.get_json()
+        usuario_input = data.get('mensaje')
+
+        if not usuario_input:
+            return jsonify({'error': 'Mensaje vacío'}), 400
+
+        # Historial por usuario (esto podría implementarse de una forma más robusta)
+        history = chat_history.get(usuario_actual, None)
+
+        # Obtener la respuesta del bot y el nuevo historial
+        respuesta, new_history = responder_mensaje(usuario_input, history)
+        chat_history[usuario_actual] = new_history
+
+        # Guardar la nueva interacción en la base de datos
+        nueva_interaccion = ConversacionIA(
+            usuario_id=usuario_actual,  # Usar el ID del usuario desde el JWT
+            mensaje_usuario=usuario_input,
+            respuesta_bot=respuesta,
+            timestamp=datetime.utcnow()
+        )
+        db.session.add(nueva_interaccion)
+        db.session.commit()
+
+        # Serializar la respuesta utilizando el esquema
+        conversacion_schema = ConversacionIASchema()
+        result = conversacion_schema.dump(nueva_interaccion)
+
+        return jsonify({'respuesta': result['respuesta_bot']}), 200

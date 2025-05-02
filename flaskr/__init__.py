@@ -14,7 +14,7 @@ from .vistas.vistas import (
     VistaUsuario, VistaProductos, VistaProducto, VistaTarjeta, VistaPaypal, VistaTransferencia, VistaProductosRecomendados,
     VistaCategorias, VistaCategoria, VistaUsuarios, VistaLogin, VistaSignIn, 
     VistaCarrito, VistaCarritos, VistaCarritoActivo, VistaRolUsuario,
-    VistaPago, VistaPerfilUsuario, VistaFactura, VistaDetalleFactura,VistaEnvio
+    VistaPago, VistaPerfilUsuario, VistaFactura, VistaDetalleFactura, VistaEnvio, Chatbot
 )
 
 # ✅ Creamos mail a nivel global
@@ -84,5 +84,6 @@ def create_app(config_name='default'):
     api.add_resource(VistaFactura, '/factura')
     api.add_resource(VistaDetalleFactura, '/detallefactura')
     api.add_resource(VistaEnvio, '/envio')
+    api.add_resource(Chatbot, '/chatbot')
 
     return app

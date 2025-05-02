@@ -1,6 +1,6 @@
 from marshmallow_sqlalchemy import SQLAlchemyAutoSchema
 from marshmallow import fields
-from .modelo import DetalleFactura, Carrito, Factura, Orden, Pago, PaypalDetalle, TransferenciaDetalle, TarjetaDetalle, Producto, Rol, Usuario, Categoria, Envio, CarritoProducto
+from .modelo import DetalleFactura, Carrito, Factura, Orden, Pago, PaypalDetalle, TransferenciaDetalle, TarjetaDetalle, Producto, Rol, Usuario, Categoria, Envio, CarritoProducto, ConversacionIA
 
 # Esquemas
 
@@ -63,6 +63,8 @@ class TarjetaDetalleSchema(SQLAlchemyAutoSchema):
     fecha_expiracion = fields.Str(required=True)
 
 class FacturaSchema(SQLAlchemyAutoSchema):
+    factura_fecha = fields.DateTime(format='iso')  # Esta línea asegura que se serialice correctamente
+
     class Meta:
         model = Factura
         include_relationships = True
@@ -159,3 +161,15 @@ class EnvioSchema(SQLAlchemyAutoSchema):
         include_relationships = True
         load_instance = True
 
+class ConversacionIASchema(SQLAlchemyAutoSchema):
+    class Meta:
+        model = ConversacionIA
+        include_relationships = True
+        load_instance = True
+
+    id = fields.Int(dump_only=True)
+    usuario_id = fields.Int(required=True)
+    mensaje_usuario = fields.Str(required=True)
+    respuesta_bot = fields.Str(required=True)
+    timestamp = fields.DateTime(format='iso', dump_only=True)
+    usuario = fields.Nested(UsuarioSchema, dump_only=True)  # Incluir la relación con Usuario si lo deseas

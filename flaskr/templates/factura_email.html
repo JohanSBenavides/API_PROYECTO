@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Factura de Compra - PHPhone</title>
+
+    <!-- Bootstrap + FontAwesome + Google Fonts -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #f2f6fc;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 700px;
+            margin: 30px auto;
+            background-color: #ffffff;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+            animation: fadeIn 1s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .icon {
+            font-size: 60px;
+            color: #007bff;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+        h2 {
+            text-align: center;
+            color: #2c3e50;
+            font-weight: 600;
+            margin-bottom: 25px;
+        }
+
+        p {
+            font-size: 16px;
+            color: #444;
+            margin: 8px 0;
+        }
+
+        strong {
+            color: #007bff;
+        }
+
+        h3 {
+            margin-top: 30px;
+            color: #007bff;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 5px;
+        }
+
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        li {
+            background-color: #f1f5fb;
+            margin: 12px 0;
+            padding: 15px;
+            border-radius: 8px;
+            transition: transform 0.3s;
+            box-shadow: 0 2px 10px rgba(0, 123, 255, 0.05);
+        }
+
+        li:hover {
+            transform: scale(1.02);
+        }
+
+        .footer {
+            text-align: center;
+            font-size: 14px;
+            margin-top: 30px;
+            color: #7f8c8d;
+        }
+
+        .footer a {
+            color: #007bff;
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        .button {
+            display: inline-block;
+            margin-top: 20px;
+            background-color: #007bff;
+            color: #fff;
+            padding: 12px 25px;
+            border-radius: 8px;
+            font-weight: bold;
+            text-decoration: none;
+            transition: transform 0.3s, background-color 0.3s;
+        }
+
+        .button:hover {
+            background-color: #0056b3;
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">
+            <i class="fas fa-file-invoice-dollar"></i>
+        </div>
+        <h2>Factura de Compra - PHPhone</h2>
+        <p>¡Gracias por tu compra! <br> Te damos la bienvenida a la familia <strong>PHPhone</strong>. Aquí tienes los detalles de tu factura:</p>
+
+        <p><strong>ID de la factura:</strong> {{ factura_id }}</p>
+        <p><strong>Fecha de la factura:</strong> {{ factura_fecha }}</p>
+        <p><strong>Total:</strong> {{ total | format_number }}</p>
+
+        <h3><i class="fas fa-list-alt"></i> Detalles de la factura:</h3>
+        <ul>
+        {% for producto in detalles %}
+            <li>
+                <strong>{{ producto.producto.producto_nombre }}</strong><br>
+                Cantidad: {{ producto.cantidad }}<br>
+                Precio unitario: {{ producto.producto.producto_precio | format_number }}
+            </li>
+        {% endfor %}
+        </ul>
+
+        <div class="footer">
+            <p>¿Tienes dudas? <a href="mailto:contacto@phphone.com">Contáctanos</a></p>
+            <p>¡Gracias por elegir PHPhone! <a href="https://www.phphone.com">Visítanos</a></p>
+        </div>
+        <div class="text-center">
+            <a href="https://www.phphone.com" class="button">Ver más productos</a>
+        </div>
+    </div>
+</body>
+</html>

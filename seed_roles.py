@@ -27,6 +27,13 @@ def seed_roles():
                 contrasena="superadmin123", 
                 rol_id=1  
             )
+            superadmin = Usuario(
+                nombre="Super Admin 2",
+                numerodoc=1234567890,
+                correo="dilangarcia1506@gmail.com",  
+                contrasena="superadmin123", 
+                rol_id=1  
+            )
             db.session.add(superadmin)  # Añadir al superadmin a la base de datos
             db.session.commit()  # Confirmar los cambios
             print("Superadmin creado correctamente.")

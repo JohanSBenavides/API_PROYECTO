@@ -230,15 +230,25 @@ class Orden(db.Model):
 
 class Envio(db.Model):
     __tablename__ = 'envio'
-
+    
+    ESTADOS_VALIDOS = {
+        'Empacando',
+        'Validando',
+        'En Camino a Tu Hogar',
+        'Tu Pedido Ya Ha Sido Entregado'
+    }
+    
     id = db.Column(db.Integer, primary_key=True)
     direccion = db.Column(db.String(255), nullable=False)
     ciudad = db.Column(db.String(100), nullable=False)
     departamento = db.Column(db.String(100), nullable=False)
     codigo_postal = db.Column(db.String(20), nullable=False)
     pais = db.Column(db.String(100), nullable=False)
-    estado_envio = db.Column(db.String(100), default="En camino a tu hogar")
+    estado_envio = db.Column(db.String(100), default="Empacando")
     fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
-
+    fecha_actualizacion = db.Column(db.DateTime)  # Añadir este campo
+    
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuario.id_usuario'), nullable=False)
     usuario = db.relationship('Usuario', back_populates='envios')
+    id_factura = db.Column(db.Integer, db.ForeignKey('factura.id_factura'), nullable=False)  # Cambiar a nullable=False
+    factura = db.relationship('Factura', backref=db.backref('envios', lazy=True))

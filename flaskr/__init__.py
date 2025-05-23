@@ -10,12 +10,10 @@ from flask_mail import Mail
 from flask import request, jsonify
 from flask import render_template
 from datetime import datetime
-
-
 from .modelos.modelo import db
 from werkzeug.security import generate_password_hash
 from .vistas.vistas import (
-    VistaUsuario, VistaProductos, VistaReportesProductos, VistaProducto, VistaTarjeta, VistaPaypal, VistaTransferencia, VistaProductosRecomendados,
+    VistaUsuario, VistaProductos, VistaActualizarEstadoEnvio, VistaEstadoEnvio, VistaPedidosUsuario, VistaUltimaFactura, VistaReportesProductos, VistaProducto, VistaTarjeta, VistaPaypal, VistaTransferencia, VistaProductosRecomendados,
     VistaCategorias, VistaCategoria, VistaUsuarios, VistaLogin, VistaSignIn, 
     VistaCarrito, VistaCarritos, VistaCarritoActivo, VistaRolUsuario,
     VistaPago, VistaPerfilUsuario, VistaFacturas, VistaAjusteStock, VistaHistorialStockGeneral, VistaHistorialStockProducto, VistaStockProductos ,VistaFactura, VistaDetalleFactura, VistaEnvio, VistaCarritoProducto, VistaPagos, VistaPagoPaypal, VistaPagoTarjeta, VistaPagoTransferencia
@@ -107,5 +105,9 @@ def create_app(config_name='default'):
     api.add_resource(VistaHistorialStockGeneral, '/historial-stock')
     api.add_resource(VistaStockProductos, '/stock-productos')
     api.add_resource(VistaReportesProductos, '/reportes/productos-mas-vendidos')
+    api.add_resource(VistaPedidosUsuario, '/api/mis-pedidos')
+    api.add_resource(VistaUltimaFactura, '/factura/ultima')
+    api.add_resource(VistaEstadoEnvio, '/api/envios/<int:id_orden>/estado')  # GET
+    api.add_resource(VistaActualizarEstadoEnvio, '/api/envios/<int:id_orden>/actualizar-estado')
 
     return app

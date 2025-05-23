@@ -17,7 +17,8 @@ usuario_schema = UsuarioSchema()
 producto_schema = ProductoSchema()
 categoria_schema = CategoriaSchema()
 carrito_schema = CarritoSchema()
-facturas_schema = FacturaSchema(many=True)
+factura_schema = FacturaSchema()
+facturas_schema = FacturaSchema(many=True) 
 orden_schema = OrdenSchema()
 detalle_factura_schema = DetalleFacturaSchema()
 envio_schema = EnvioSchema()
@@ -931,116 +932,196 @@ class VistaDetalleFactura(Resource):
             db.session.rollback()
             return {"error": str(e)}, 500
         
+class VistaUltimaFactura(Resource):
+    @jwt_required()
+    def get(self):
+        usuario_id = get_jwt_identity()
+        
+        # Obtener la última factura del usuario
+        factura = Factura.query.join(Pago).join(Carrito).filter(
+            Carrito.id_usuario == usuario_id
+        ).order_by(Factura.factura_fecha.desc()).first()
+        
+        if not factura:
+            return {"error": "No se encontraron facturas para este usuario"}, 404
+            
+        return factura_schema.dump(factura), 200
+        
 
 class VistaEnvio(Resource):
     @jwt_required()
     def post(self):
-        id_usuario = get_jwt_identity()
-        
-        if not id_usuario:
-            return {"message": "No se pudo identificar al usuario"}, 401
+        data = request.get_json()
 
-        datos_envio = request.get_json()
-
-        if not datos_envio:
-            return {"message": "No se recibieron datos en el cuerpo de la solicitud"}, 400
-
-        campos_requeridos = ['direccion', 'ciudad', 'departamento', 'codigo_postal', 'pais']
-        campos_faltantes = [campo for campo in campos_requeridos if campo not in datos_envio or not datos_envio[campo]]
-
-        if campos_faltantes:
-            return {"message": f"Faltan los siguientes campos requeridos: {', '.join(campos_faltantes)}"}, 400
+        # Validar campos requeridos
+        required_fields = ['direccion', 'ciudad', 'departamento', 'codigo_postal', 'pais', 'id_factura']
+        for field in required_fields:
+            if field not in data:
+                return {"error": f"Falta el campo '{field}' en el cuerpo JSON"}, 400
 
         try:
-            # Estados de envío con tiempos estimados y emojis
-            estados_envio = [
-                {
-                    "estado": "Pedido recibido 🛒",
-                    "descripcion": "Hemos recibido tu pedido correctamente",
-                    "tiempo_estimado": "1 min",
-                    "completado": False
-                },
-                {
-                    "estado": "Procesando pago 💳",
-                    "descripcion": "Verificamos los datos de tu pago",
-                    "tiempo_estimado": "2 mins",
-                    "completado": False
-                },
-                {
-                    "estado": "Preparando tu pedido 👨‍🍳",
-                    "descripcion": "Estamos preparando todo con cuidado",
-                    "tiempo_estimado": "10 mins",
-                    "completado": False
-                },
-                {
-                    "estado": "Empacando productos 🎁",
-                    "descripcion": "Todo está siendo empaquetado",
-                    "tiempo_estimado": "5 mins",
-                    "completado": False
-                },
-                {
-                    "estado": "En bodega para despacho 📦",
-                    "descripcion": "Tu pedido está listo para salir",
-                    "tiempo_estimado": "3 mins",
-                    "completado": False
-                },
-                {
-                    "estado": "En camino a tu ubicación 🚚",
-                    "descripcion": "Nuestro repartidor está en camino",
-                    "tiempo_estimado": "20 mins",
-                    "completado": False
-                },
-                {
-                    "estado": "¡Pedido entregado! 🎉",
-                    "descripcion": "Disfruta tu pedido",
-                    "tiempo_estimado": "",
-                    "completado": False
-                }
-            ]
+            # Obtener el ID del usuario desde el token JWT
+            usuario_id = get_jwt_identity()
+            factura = Factura.query.get(data['id_factura'])
+
+            # Obtener el pago asociado a la factura
+            pago = Pago.query.get(factura.id_pago)
+            if not pago:
+                return {"error": "No se encontró el pago asociado a la factura"}, 404
+
+            # Crear zona horaria de Bogotá
+            bogota_timezone = pytz.timezone('America/Bogota')
+            fecha_bogota = datetime.now(bogota_timezone)
+
+            # Crear nuevo envío
+            nuevo_envio = Envio(
+                direccion=data['direccion'],
+                ciudad=data['ciudad'],
+                departamento=data['departamento'],
+                codigo_postal=data['codigo_postal'],
+                pais=data['pais'],
+                estado_envio=data.get('estado_envio', "Empacando"),
+                fecha_creacion=fecha_bogota,
+                usuario_id=usuario_id,
+                id_factura=data['id_factura']
+            )
+
+            db.session.add(nuevo_envio)
+            db.session.flush()  # Para obtener el ID del envío
+
+            # Calcular el monto total de la factura
+            detalles_factura = DetalleFactura.query.filter_by(id_factura=factura.id_factura).all()
+            monto_total = sum(detalle.monto_total for detalle in detalles_factura)
+
+            # Crear nueva orden asociada al envío y factura
+            nueva_orden = Orden(
+                id_usuario=usuario_id,
+                id_factura=data['id_factura'],
+                fecha_orden=fecha_bogota,
+                monto_total=monto_total,
+                estado='enviada'  # Estado inicial
+            )
+
+            db.session.add(nueva_orden)
+            db.session.commit()
+
+            # Formatear fechas para la respuesta
+            fecha_creacion_str = nuevo_envio.fecha_creacion.strftime('%Y-%m-%d %H:%M:%S')
+            fecha_orden_str = nueva_orden.fecha_orden.strftime('%Y-%m-%d %H:%M:%S')
 
             return {
-                "mensaje": "Datos de envío procesados exitosamente",
-                "estados": estados_envio,
-                "tiempo_total_estimado": "40 mins",
-                "fecha_estimada": (datetime.now() + timedelta(minutes=40)).strftime('%H:%M')
+                "message": "Envío y orden creados exitosamente",
+                "envio": envio_schema.dump(nuevo_envio),
+                "orden": orden_schema.dump(nueva_orden)
             }, 201
 
         except Exception as e:
-            return {"error": f"Ocurrió un error al procesar el envío: {str(e)}"}, 500
+            db.session.rollback()
+            current_app.logger.error(f"Error al crear envío y orden: {str(e)}")
+            return {"error": f"Error al crear envío y orden: {str(e)}"}, 500
+        
+##ESTADOS DEL ENVIO 
 
 
-class SeguimientoEnvio(Resource):
+class VistaEstadoEnvio(Resource):
     @jwt_required()
-    def get(self, id_envio):
-        # En una implementación real, aquí buscarías el estado actual del envío
-        # Pero para la simulación, avanzamos los estados cada 5-10 segundos
+    def get(self, id_orden):
+        try:
+            # Obtener el usuario actual desde el token JWT
+            usuario_id = get_jwt_identity()
+            
+            # Buscar el envío asociado a la orden, verificando que pertenezca al usuario
+            envio = Envio.query.join(Factura, Envio.id_factura == Factura.id_factura)\
+                              .join(Orden, Factura.id_factura == Orden.id_factura)\
+                              .filter(
+                                  Orden.id_orden == id_orden,
+                                  Envio.usuario_id == usuario_id  # Verificar pertenencia al usuario
+                              )\
+                              .first()
+            
+            if not envio:
+                return {'error': 'Envío no encontrado o no pertenece al usuario'}, 404
+                
+            # Formatear la respuesta con todos los campos relevantes del modelo
+            response_data = {
+                'id_envio': envio.id,
+                'estado_envio': envio.estado_envio,
+                'fecha_creacion': envio.fecha_creacion.isoformat(),
+                'direccion_completa': {
+                    'direccion': envio.direccion,
+                    'ciudad': envio.ciudad,
+                    'departamento': envio.departamento,
+                    'codigo_postal': envio.codigo_postal,
+                    'pais': envio.pais
+                },
+                'detalles_factura': {
+                    'id_factura': envio.id_factura
+                },
+                'detalles_usuario': {
+                    'usuario_id': envio.usuario_id,
+                    'nombre_usuario': envio.usuario.nombre if envio.usuario else None
+                },
+                'estados_disponibles': list(Envio.ESTADOS_VALIDOS)  # Mostrar los estados válidos
+            }
+            
+            # Añadir fecha de actualización si existe
+            if hasattr(envio, 'fecha_actualizacion') and envio.fecha_actualizacion:
+                response_data['ultima_actualizacion'] = envio.fecha_actualizacion.isoformat()
+                
+            return response_data, 200
+            
+        except Exception as e:
+            current_app.logger.error(f"Error en VistaEstadoEnvio: {str(e)}", exc_info=True)
+            return {
+                'error': 'Error al obtener el estado de envío',
+                'detalles': str(e)
+            }, 500
         
-        # Simulamos un ID de envío válido
-        if not id_envio:
-            return {"message": "ID de envío no proporcionado"}, 400
-        
-        # Simulamos el avance del envío
-        estados = [
-            {"estado": "Pedido recibido 🛒", "completado": True},
-            {"estado": "Procesando pago 💳", "completado": True},
-            {"estado": "Preparando tu pedido 👨‍🍳", "completado": True},
-            {"estado": "Empacando productos 🎁", "completado": False},
-            {"estado": "En bodega para despacho 📦", "completado": False},
-            {"estado": "En camino a tu ubicación 🚚", "completado": False},
-            {"estado": "¡Pedido entregado! 🎉", "completado": False}
-        ]
-        
-        # Avanzamos un estado cada vez que se consulta (para la simulación)
-        for i, estado in enumerate(estados):
-            if not estado["completado"]:
-                estado["completado"] = True
-                break
-        
-        return {
-            "estado_actual": estados,
-            "progreso": f"{int((sum(1 for e in estados if e['completado']) / len(estados)) * 100)}%"
-        }, 200
+            
+class VistaActualizarEstadoEnvio(Resource):
+    @jwt_required()
+    def put(self, id_orden):
+        try:
 
+            data = request.get_json()
+            nuevo_estado = data.get('estado_envio')
+            
+            if not nuevo_estado:
+                return {'error': 'El campo estado_envio es requerido'}, 400
+                
+            # Validar que el estado existe (case sensitive)
+            if nuevo_estado not in Envio.ESTADOS_VALIDOS:
+                return {
+                    'error': f'Estado no válido. Los estados permitidos son: {", ".join(Envio.ESTADOS_VALIDOS)}'
+                }, 400
+                
+            # Buscar el envío con join más seguro
+            envio = db.session.query(Envio)\
+                            .join(Factura, Factura.id_factura == Envio.id_factura)\
+                            .join(Orden, Orden.id_factura == Factura.id_factura)\
+                            .filter(Orden.id_orden == id_orden)\
+                            .first()
+            
+            if not envio:
+                return {'error': 'Envío no encontrado'}, 404
+                
+            # Actualizar estado
+            envio.estado_envio = nuevo_estado
+            envio.fecha_actualizacion = datetime.utcnow()
+            db.session.commit()
+            
+            return {
+                'mensaje': 'Estado de envío actualizado correctamente',
+                'nuevo_estado': envio.estado_envio,
+                'fecha_actualizacion': envio.fecha_actualizacion.isoformat()
+            }, 200
+            
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error al actualizar estado de envío: {str(e)}")
+            return {'error': 'Error al actualizar estado de envío'}, 500
+        
+        
 class VistaAjusteStock(Resource):
     @jwt_required()
     def post(self, id_producto):
@@ -1211,3 +1292,52 @@ class VistaReportesProductos(Resource):
         except Exception as e:
             current_app.logger.error(f"Error en reportes: {str(e)}")
             return {'mensaje': 'Error interno al generar el reporte', 'error': str(e)}, 500
+        
+class VistaPedidosUsuario(Resource):
+    @jwt_required()
+    def get(self):
+        id_usuario = get_jwt_identity()
+        ordenes = Orden.query.filter_by(id_usuario=id_usuario).all()
+        
+        if not ordenes:
+            return {"message": "No se encontraron pedidos para este usuario"}, 404
+        
+        pedidos = []
+        for orden in ordenes:
+            factura = Factura.query.get(orden.id_factura)
+            detalles_factura = DetalleFactura.query.filter_by(id_factura=factura.id_factura).all()
+            pago = Pago.query.get(factura.id_pago)
+            
+            # Cambia esta línea para usar la relación con factura
+            envio = Envio.query.filter_by(id_factura=factura.id_factura).first()
+            
+            productos = []
+            for detalle in detalles_factura:
+                producto = Producto.query.get(detalle.id_producto)
+                productos.append({
+                    "id_producto": producto.id_producto,
+                    "nombre": producto.producto_nombre,
+                    "precio_unitario": detalle.precio_unitario,
+                    "cantidad": detalle.cantidad,
+                    "subtotal": detalle.monto_total,
+                    "imagen": producto.producto_foto
+                })
+            
+            pedidos.append({
+                "id_orden": orden.id_orden,
+                "fecha": orden.fecha_orden.strftime('%Y-%m-%d %H:%M:%S'),
+                "estado": orden.estado,
+                "total": orden.monto_total,
+                "metodo_pago": pago.metodo_pago,
+                "estado_pago": pago.estado,
+                "direccion_envio": {
+                    "direccion": envio.direccion if envio else None,
+                    "ciudad": envio.ciudad if envio else None,
+                    "estado_envio": envio.estado_envio if envio else None
+                } if envio else None,
+                "productos": productos
+            })
+        
+        return {"pedidos": pedidos}, 200
+        
+

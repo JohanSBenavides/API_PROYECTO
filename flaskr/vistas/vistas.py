@@ -3,7 +3,7 @@ import pytz
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 from flask import request, current_app, jsonify
-from flask_restful import Resource
+from flask_restful import Resource, reqparse
 from flask_mail import Message
 from flask import current_app
 from flask import request, render_template
@@ -870,24 +870,44 @@ class VistaDetalleFactura(Resource):
     @jwt_required()
     def get(self, id_factura=None):
         if id_factura:
-            # Buscar detalles de factura por id_factura
-            detalles = DetalleFactura.query.filter_by(id_factura=id_factura).all()
+            # Buscar detalles de factura por id_factura con join a Producto
+            detalles = db.session.query(
+                DetalleFactura,
+                Producto.producto_nombre
+            ).join(
+                Producto,
+                DetalleFactura.id_producto == Producto.id_producto
+            ).filter(
+                DetalleFactura.id_factura == id_factura
+            ).all()
+            
             if not detalles:
                 return {"message": "No se encontraron detalles para esta factura"}, 404
+            
+            return [
+                {
+                    "id_detalle_factura": detalle.DetalleFactura.id_detalle_factura,
+                    "id_factura": detalle.DetalleFactura.id_factura,
+                    "id_producto": detalle.DetalleFactura.id_producto,
+                    "producto_nombre": detalle.producto_nombre,  # Nombre del producto incluido
+                    "cantidad": detalle.DetalleFactura.cantidad,
+                    "precio_unitario": detalle.DetalleFactura.precio_unitario,
+                    "monto_total": detalle.DetalleFactura.monto_total
+                } for detalle in detalles
+            ], 200
         else:
-            # Obtener todos los detalles de facturas
+            # Obtener todos los detalles de facturas (versión básica sin join para mantener performance)
             detalles = DetalleFactura.query.all()
-
-        return [
-            {
-                "id_detalle_factura": detalle.id_detalle_factura,
-                "id_factura": detalle.id_factura,
-                "id_producto": detalle.id_producto,
-                "cantidad": detalle.cantidad,
-                "precio_unitario": detalle.precio_unitario,
-                "monto_total": detalle.monto_total
-            } for detalle in detalles
-        ], 200
+            return [
+                {
+                    "id_detalle_factura": detalle.id_detalle_factura,
+                    "id_factura": detalle.id_factura,
+                    "id_producto": detalle.id_producto,
+                    "cantidad": detalle.cantidad,
+                    "precio_unitario": detalle.precio_unitario,
+                    "monto_total": detalle.monto_total
+                } for detalle in detalles
+            ], 200
 
     @jwt_required()
     def post(self):
@@ -1029,20 +1049,27 @@ class VistaEstadoEnvio(Resource):
         try:
             # Obtener el usuario actual desde el token JWT
             usuario_id = get_jwt_identity()
+            usuario = Usuario.query.get(usuario_id)
             
-            # Buscar el envío asociado a la orden, verificando que pertenezca al usuario
-            envio = Envio.query.join(Factura, Envio.id_factura == Factura.id_factura)\
-                              .join(Orden, Factura.id_factura == Orden.id_factura)\
-                              .filter(
-                                  Orden.id_orden == id_orden,
-                                  Envio.usuario_id == usuario_id  # Verificar pertenencia al usuario
-                              )\
-                              .first()
+            if not usuario:
+                return {'error': 'Usuario no encontrado'}, 404
+            
+            # Buscar el envío asociado a la orden
+            query = Envio.query \
+                .join(Factura, Envio.id_factura == Factura.id_factura) \
+                .join(Orden, Factura.id_factura == Orden.id_factura) \
+                .filter(Orden.id_orden == id_orden)
+            
+            # Si no es admin (rol_id != 1), filtrar por usuario
+            if getattr(usuario, 'rol_id', 0) != 1:
+                query = query.filter(Envio.usuario_id == usuario_id)
+            
+            envio = query.first()
             
             if not envio:
-                return {'error': 'Envío no encontrado o no pertenece al usuario'}, 404
+                return {'error': 'Envío no encontrado o no tienes permisos'}, 404
                 
-            # Formatear la respuesta con todos los campos relevantes del modelo
+            # Formatear la respuesta
             response_data = {
                 'id_envio': envio.id,
                 'estado_envio': envio.estado_envio,
@@ -1061,65 +1088,81 @@ class VistaEstadoEnvio(Resource):
                     'usuario_id': envio.usuario_id,
                     'nombre_usuario': envio.usuario.nombre if envio.usuario else None
                 },
-                'estados_disponibles': list(Envio.ESTADOS_VALIDOS)  # Mostrar los estados válidos
+                'estados_disponibles': list(Envio.ESTADOS_VALIDOS) if hasattr(Envio, 'ESTADOS_VALIDOS') else []
             }
             
-            # Añadir fecha de actualización si existe
-            if hasattr(envio, 'fecha_actualizacion') and envio.fecha_actualizacion:
+            if envio.fecha_actualizacion:
                 response_data['ultima_actualizacion'] = envio.fecha_actualizacion.isoformat()
                 
             return response_data, 200
             
         except Exception as e:
             current_app.logger.error(f"Error en VistaEstadoEnvio: {str(e)}", exc_info=True)
-            return {
-                'error': 'Error al obtener el estado de envío',
-                'detalles': str(e)
-            }, 500
-        
-            
-class VistaActualizarEstadoEnvio(Resource):
-    @jwt_required()
-    def put(self, id_orden):
-        try:
+            return {'error': 'Error al obtener el estado de envío'}, 500
 
-            data = request.get_json()
-            nuevo_estado = data.get('estado_envio')
-            
-            if not nuevo_estado:
-                return {'error': 'El campo estado_envio es requerido'}, 400
-                
-            # Validar que el estado existe (case sensitive)
-            if nuevo_estado not in Envio.ESTADOS_VALIDOS:
-                return {
-                    'error': f'Estado no válido. Los estados permitidos son: {", ".join(Envio.ESTADOS_VALIDOS)}'
-                }, 400
-                
-            # Buscar el envío con join más seguro
-            envio = db.session.query(Envio)\
-                            .join(Factura, Factura.id_factura == Envio.id_factura)\
-                            .join(Orden, Orden.id_factura == Factura.id_factura)\
-                            .filter(Orden.id_orden == id_orden)\
-                            .first()
-            
-            if not envio:
-                return {'error': 'Envío no encontrado'}, 404
-                
-            # Actualizar estado
-            envio.estado_envio = nuevo_estado
-            envio.fecha_actualizacion = datetime.utcnow()
+estado_parser = reqparse.RequestParser()
+estado_parser.add_argument('nuevo_estado', type=str, required=True, help='Nuevo estado es requerido')
+
+class VistaEnviosAdmin(Resource):
+    @jwt_required()
+    def get(self):
+        # Verificar si el usuario es admin (rol_id = 1)
+        usuario_id = get_jwt_identity()
+        usuario = Usuario.query.get(usuario_id)
+        if not usuario or getattr(usuario, 'rol_id', 0) != 1:
+            return {'error': 'Acceso no autorizado'}, 403
+
+        # Obtener todos los envíos con detalles de usuario
+        envios = Envio.query.join(Usuario).all()
+        
+        # Formatear respuesta
+        envios_data = []
+        for envio in envios:
+            envios_data.append({
+                'id_envio': envio.id,
+                'usuario_id': envio.usuario_id,
+                'nombre_usuario': envio.usuario.nombre,
+                'estado_actual': envio.estado_envio,
+                'fecha_creacion': envio.fecha_creacion.isoformat(),
+                'id_factura': envio.id_factura
+            })
+        
+        return {'envios': envios_data}, 200
+
+class VistaActualizarEstadoAdmin(Resource):
+    @jwt_required()
+    def patch(self, id_envio):
+        # Verificar permisos de admin (rol_id = 1)
+        usuario_id = get_jwt_identity()
+        usuario = Usuario.query.get(usuario_id)
+        if not usuario or getattr(usuario, 'rol_id', 0) != 1:
+            return {'error': 'Acceso no autorizado'}, 403
+
+        args = estado_parser.parse_args()
+        nuevo_estado = args['nuevo_estado']
+
+        # Validar estado
+        estados_validos = ['Empacando', 'Validando', 'En Camino a Tu Hogar', 'Tu Pedido Ya Ha Sido Entregado']
+        if nuevo_estado not in estados_validos:
+            return {'error': f'Estado no válido. Los estados permitidos son: {", ".join(estados_validos)}'}, 400
+
+        # Actualizar envío
+        envio = Envio.query.get(id_envio)
+        if not envio:
+            return {'error': 'Envío no encontrado'}, 404
+
+        envio.estado_envio = nuevo_estado
+        envio.fecha_actualizacion = datetime.utcnow()
+        
+        try:
             db.session.commit()
-            
-            return {
-                'mensaje': 'Estado de envío actualizado correctamente',
-                'nuevo_estado': envio.estado_envio,
-                'fecha_actualizacion': envio.fecha_actualizacion.isoformat()
-            }, 200
-            
+            return {'mensaje': 'Estado actualizado correctamente'}, 200
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error(f"Error al actualizar estado de envío: {str(e)}")
-            return {'error': 'Error al actualizar estado de envío'}, 500
+            current_app.logger.error(f"Error al actualizar estado: {str(e)}", exc_info=True)
+            return {'error': 'Error al actualizar el estado'}, 500
+
+
         
         
 class VistaAjusteStock(Resource):

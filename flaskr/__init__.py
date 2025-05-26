@@ -13,7 +13,7 @@ from datetime import datetime
 from .modelos.modelo import db
 from werkzeug.security import generate_password_hash
 from .vistas.vistas import (
-    VistaUsuario, VistaProductos, VistaActualizarEstadoAdmin, VistaEnviosAdmin, VistaEstadoEnvio, VistaPedidosUsuario, VistaUltimaFactura, VistaReportesProductos, VistaProducto, VistaTarjeta, VistaPaypal, VistaTransferencia, VistaProductosRecomendados,
+    VistaUsuario, VistaProductos, VistaProductosBajoStock, VistaActualizarEstadoAdmin, VistaEnviosAdmin, VistaEstadoEnvio, VistaPedidosUsuario, VistaUltimaFactura, VistaReportesProductos, VistaProducto, VistaTarjeta, VistaPaypal, VistaTransferencia, VistaProductosRecomendados,
     VistaCategorias, VistaCategoria, VistaUsuarios, VistaLogin, VistaSignIn, 
     VistaCarrito, VistaCarritos, VistaCarritoActivo, VistaRolUsuario,
     VistaPago, VistaPerfilUsuario, VistaFacturas, VistaAjusteStock, VistaHistorialStockGeneral, VistaHistorialStockProducto, VistaStockProductos ,VistaFactura, VistaDetalleFactura, VistaEnvio, VistaCarritoProducto, VistaPagos, VistaPagoPaypal, VistaPagoTarjeta, VistaPagoTransferencia
@@ -109,6 +109,7 @@ def create_app(config_name='default'):
     api.add_resource(VistaUltimaFactura, '/factura/ultima')
     api.add_resource(VistaEstadoEnvio, '/api/envios/<int:id_orden>/estado')  # GET
     api.add_resource(VistaEnviosAdmin, '/api/admin/envios')  # GET: Listar envíos
-    api.add_resource(VistaActualizarEstadoAdmin, '/api/admin/envios/<int:id_envio>/estado')  # PATCH: Actualizar estado
+    api.add_resource(VistaActualizarEstadoAdmin, '/api/admin/envios/<int:id_envio>/estado')
+    api.add_resource(VistaProductosBajoStock, '/api/productos/bajo-stock') 
 
     return app

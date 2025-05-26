@@ -1,4 +1,5 @@
 import os
+import re
 import pytz
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
@@ -51,12 +52,33 @@ class VistaUsuarios(Resource):
 
     @jwt_required()
     def post(self):
+        # Validar campos requeridos
+        if not all(key in request.json for key in ['nombre', 'numerodoc', 'correo', 'contrasena']):
+            return {"message": "Faltan campos obligatorios"}, 400
+
+        # Validar formato del nombre (solo letras y espacios)
+        if not re.match(r'^[A-Za-záéíóúÁÉÍÓÚñÑ\s]+$', request.json["nombre"]):
+            return {"message": "El nombre solo debe contener letras y espacios"}, 400
+
+        # Validar formato del número de documento (solo números, máximo 15)
+        if not re.match(r'^\d{1,15}$', str(request.json["numerodoc"])):
+            return {"message": "El número de documento debe contener solo números (máximo 15 dígitos)"}, 400
+
+        # Validar formato del correo
+        if not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', request.json["correo"]):
+            return {"message": "Formato de correo electrónico inválido"}, 400
+
+        # Validar contraseña (8-16 caracteres alfanuméricos)
+        if not re.match(r'^[A-Za-z0-9]{8,16}$', request.json["contrasena"]):
+            return {"message": "La contraseña debe tener entre 8 y 16 caracteres alfanuméricos"}, 400
+
+        # Verificar si el correo ya existe
         if Usuario.query.filter_by(correo=request.json["correo"]).first():
             return {"message": "El correo ya está registrado."}, 400
 
-        contrasena = request.json.get("contrasena")
-        if not contrasena or contrasena.strip() == "":
-            return {"message": "La contraseña no puede estar vacía."}, 400
+        # Verificar si el número de documento ya existe
+        if Usuario.query.filter_by(numerodoc=request.json["numerodoc"]).first():
+            return {"message": "El número de documento ya está registrado."}, 400
 
         rol_cliente = Rol.query.filter_by(rol_id=2).first()
         if not rol_cliente:
@@ -66,7 +88,7 @@ class VistaUsuarios(Resource):
             nombre=request.json["nombre"],
             numerodoc=request.json["numerodoc"],
             correo=request.json["correo"],
-            contrasena=contrasena,
+            contrasena=request.json["contrasena"],
             rol_id=rol_cliente.rol_id
         )
 
@@ -114,53 +136,66 @@ class VistaUsuario(Resource):
         db.session.commit()
 
         return {"message": "Usuario eliminado exitosamente."}, 200
-    
-    #Intentar añadir getsegun ID para la persona LOGUEADA
-    
+
 class VistaPerfilUsuario(Resource):
     @jwt_required()
     def get(self):
-        # Obtiene el ID del usuario logueado a partir del JWT
         id_usuario = get_jwt_identity()
-
-        # Verifica si el id_usuario es válido
-        if not id_usuario:
-            return {"message": "ID de usuario no encontrado en el token."}, 400
-
-        # Buscar al usuario por su ID
         usuario = Usuario.query.get(id_usuario)
         
         if not usuario:
-            return {"message": "Usuario no encontrado."}, 404
-
-        # Devuelve los datos del usuario logueado
+            return {"message": "Usuario no encontrado"}, 404
+            
         return usuario_schema.dump(usuario), 200
 
     @jwt_required()
     def put(self):
-        # Obtiene el ID del usuario logueado a partir del JWT
         id_usuario = get_jwt_identity()
-
-        # Buscar al usuario por su ID
         usuario = Usuario.query.get(id_usuario)
         
         if not usuario:
-            return {"message": "Usuario no encontrado."}, 404
+            return {"message": "Usuario no encontrado"}, 404
 
-        # Actualizar la información del usuario con los datos proporcionados
-        usuario.nombre = request.json.get('nombre', usuario.nombre)
-        usuario.numerodoc = request.json.get('numerodoc', usuario.numerodoc)
-        usuario.correo = request.json.get('correo', usuario.correo)
+        data = request.json
 
-        # Si se proporciona una nueva contraseña, actualizarla
-        nueva_contrasena = request.json.get('contrasena', None)
-        if nueva_contrasena:
-            usuario.contrasena = nueva_contrasena
+        # Validación obligatoria de contraseña actual
+        if 'contrasena_actual' not in data or not usuario.verificar_contrasena(data['contrasena_actual']):
+            return {"message": "Contraseña actual incorrecta"}, 401
+
+        # Validación del nombre
+        if 'nombre' in data:
+            if not re.match("^[A-Za-záéíóúÁÉÍÓÚñÑ\\s]+$", data['nombre']):
+                return {"message": "El nombre solo debe contener letras y espacios"}, 400
+            usuario.nombre = data['nombre']
+
+        # Validación del documento
+        if 'numerodoc' in data:
+            if not re.match("^\\d{1,15}$", data['numerodoc']):
+                return {"message": "El documento debe contener solo números (máx. 15 dígitos)"}, 400
+            usuario.numerodoc = data['numerodoc']
+
+        # Validación del correo
+        if 'correo' in data:
+            if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", data['correo']):
+                return {"message": "Ingrese un correo electrónico válido"}, 400
+            if Usuario.query.filter(Usuario.correo == data['correo'], Usuario.id_usuario != id_usuario).first():
+                return {"message": "Este correo ya está registrado por otro usuario"}, 400
+            usuario.correo = data['correo']
+
+        # Validación de nueva contraseña (solo si se proporciona)
+        if 'nueva_contrasena' in data and data['nueva_contrasena']:
+            if not re.match("^[A-Za-z0-9]{8,16}$", data['nueva_contrasena']):
+                return {"message": "La nueva contraseña debe ser alfanumérica (8-16 caracteres)"}, 400
+            if data['nueva_contrasena'] != data.get('confirmar_contrasena', ''):
+                return {"message": "Las nuevas contraseñas no coinciden"}, 400
+            usuario.contrasena = data['nueva_contrasena']
 
         db.session.commit()
-
-        # Devolver la información actualizada del usuario
-        return usuario_schema.dump(usuario), 200
+        
+        return {
+            "message": "Perfil actualizado exitosamente",
+            "usuario": usuario_schema.dump(usuario)
+        }, 200
 
 class VistaProductos(Resource):
     def get(self):
@@ -372,23 +407,45 @@ class VistaLogin(Resource):
 
 
 
+
+
+
 class VistaSignIn(Resource):
     def post(self):
-        if Usuario.query.filter_by(correo=request.json["correo"]).first():
+        # Validación del nombre (solo letras y espacios)
+        nombre = request.json.get("nombre", "").strip()
+        if not nombre or not re.match("^[A-Za-záéíóúÁÉÍÓÚñÑ\\s]+$", nombre):
+            return {"message": "El nombre solo debe contener letras y espacios."}, 400
+
+        # Validación del número de documento (solo números, máximo 15)
+        numerodoc = request.json.get("numerodoc", "").strip()
+        if not numerodoc or not re.match("^\\d{1,15}$", numerodoc):
+            return {"message": "El documento debe contener solo números (máximo 15 dígitos)."}, 400
+
+        # Validación del correo (formato válido)
+        correo = request.json.get("correo", "").strip()
+        if not correo or not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", correo):
+            return {"message": "Ingrese un correo electrónico válido."}, 400
+
+        # Validación de la contraseña (8-16 caracteres, alfanumérica)
+        contrasena = request.json.get("contrasena", "").strip()
+        if not contrasena or not re.match("^[A-Za-z0-9]{8,16}$", contrasena):
+            return {"message": "La contraseña debe ser alfanumérica (8-16 caracteres)."}, 400
+
+        # Verificar si el correo ya está registrado
+        if Usuario.query.filter_by(correo=correo).first():
             return {"message": "El correo ya está registrado."}, 400
 
-        contrasena = request.json.get("contrasena")
-        if not contrasena or contrasena.strip() == "":
-            return {"message": "La contraseña no puede estar vacía."}, 400
-
+        # Asignar rol de cliente (ID=2)
         rol_cliente = Rol.query.filter_by(rol_id=2).first()
         if not rol_cliente:
             return {"message": "Rol 'Cliente' no encontrado."}, 400
 
+        # Crear el nuevo usuario
         nuevo_usuario = Usuario(
-            nombre=request.json["nombre"],
-            numerodoc=request.json["numerodoc"],
-            correo=request.json["correo"],
+            nombre=nombre,
+            numerodoc=numerodoc,
+            correo=correo,
             contrasena=contrasena,
             rol_id=rol_cliente.rol_id
         )
@@ -396,6 +453,7 @@ class VistaSignIn(Resource):
         db.session.add(nuevo_usuario)
         db.session.commit()
 
+        # Generar token JWT
         access_token = create_access_token(identity=nuevo_usuario.id_usuario)
 
         return {
@@ -678,6 +736,29 @@ class VistaTarjeta(Resource):
     @jwt_required()
     def post(self):
         datos = request.json
+        
+        # Validaciones
+        if not datos.get('numero_tarjeta') or not re.match(r'^\d{16}$', str(datos.get('numero_tarjeta'))):
+            return {"mensaje": "El número de tarjeta debe tener exactamente 16 dígitos"}, 400
+            
+        if not datos.get('nombre_en_tarjeta') or not re.match(r'^[a-zA-Z\s]+$', datos.get('nombre_en_tarjeta')):
+            return {"mensaje": "El nombre en la tarjeta solo debe contener letras"}, 400
+            
+        if not datos.get('cvv') or not re.match(r'^\d{3}$', str(datos.get('cvv'))):
+            return {"mensaje": "El CVV debe tener exactamente 3 dígitos"}, 400
+            
+        if not datos.get('fecha_expiracion') or not re.match(r'^\d{4}$', str(datos.get('fecha_expiracion'))):
+            return {"mensaje": "La fecha de expiración debe tener 4 dígitos (MMAA)"}, 400
+            
+        # Validar fecha no expirada
+        try:
+            mes = int(str(datos.get('fecha_expiracion'))[:2])
+            ano = int(str(datos.get('fecha_expiracion'))[2:]) + 2000
+            if ano < datetime.now().year or (ano == datetime.now().year and mes < datetime.now().month):
+                return {"mensaje": "La tarjeta está expirada"}, 400
+        except:
+            return {"mensaje": "Formato de fecha inválido"}, 400
+
         nueva_tarjeta = TarjetaDetalle(
             id_pago=datos.get('id_pago'),
             nombre_en_tarjeta=datos.get('nombre_en_tarjeta'),
@@ -693,12 +774,26 @@ class VistaTransferencia(Resource):
     @jwt_required()
     def post(self):
         datos = request.json
+        
+        # Validaciones
+        if not datos.get('nombre_titular') or not re.match(r'^[a-zA-Z\s]+$', datos.get('nombre_titular')):
+            return {"mensaje": "El nombre del titular solo debe contener letras"}, 400
+            
+        if not datos.get('banco_origen') or not re.match(r'^[a-zA-Z\s]+$', datos.get('banco_origen')):
+            return {"mensaje": "El nombre del banco solo debe contener letras"}, 400
+            
+        if not datos.get('numero_cuenta') or not re.match(r'^\d{1,16}$', str(datos.get('numero_cuenta'))):
+            return {"mensaje": "El número de cuenta debe contener solo números (máximo 16 dígitos)"}, 400
+            
+        if datos.get('comprobante_url') and not re.match(r'^[a-zA-Z0-9]{1,30}$', datos.get('comprobante_url')):
+            return {"mensaje": "El URL del comprobante debe contener solo letras y números (máximo 30 caracteres)"}, 400
+
         nueva_transferencia = TransferenciaDetalle(
             id_pago=datos.get('id_pago'),
-            nombre_titular=datos.get('nombre_titular'),  # Ahora se espera el nombre del titular
+            nombre_titular=datos.get('nombre_titular'),
             banco_origen=datos.get('banco_origen'),
             numero_cuenta=datos.get('numero_cuenta'),
-            comprobante_url=datos.get('comprobante_url')  # Si es que se incluye
+            comprobante_url=datos.get('comprobante_url')
         )
         db.session.add(nueva_transferencia)
         db.session.commit()
@@ -708,10 +803,18 @@ class VistaPaypal(Resource):
     @jwt_required()
     def post(self):
         datos = request.json
+        
+        # Validaciones
+        if not datos.get('email_paypal') or not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', datos.get('email_paypal')):
+            return {"mensaje": "Por favor ingrese un correo electrónico válido para PayPal"}, 400
+            
+        if not datos.get('confirmacion_id') or not re.match(r'^\d+$', str(datos.get('confirmacion_id'))):
+            return {"mensaje": "El ID de confirmación de PayPal debe contener solo números"}, 400
+
         nuevo_paypal = PaypalDetalle(
             id_pago=datos.get('id_pago'),
-            email_paypal=datos.get('email_paypal'),  # Corregido el nombre
-            confirmacion_id=datos.get('confirmacion_id')  # Corregido el nombre
+            email_paypal=datos.get('email_paypal'),
+            confirmacion_id=datos.get('confirmacion_id')
         )
         db.session.add(nuevo_paypal)
         db.session.commit()
@@ -1382,5 +1485,34 @@ class VistaPedidosUsuario(Resource):
             })
         
         return {"pedidos": pedidos}, 200
+    
+class VistaProductosBajoStock(Resource):
+    @jwt_required()
+    def get(self):
+        # Verificar que el usuario es administrador
+        usuario_id = get_jwt_identity()
+        usuario = Usuario.query.get(usuario_id)
+        
+        if not usuario or usuario.rol_id != 1:  # Asumiendo que 1 es admin
+            return {"message": "No autorizado"}, 403
+
+        # Obtener productos con menos de 10 unidades
+        productos_bajo_stock = Producto.query.filter(
+            Producto.producto_stock < 10
+        ).all()
+
+        # Formatear la respuesta
+        productos_formateados = [{
+            "id_producto": producto.id_producto,
+            "nombre": producto.producto_nombre,
+            "stock_actual": producto.producto_stock,
+            "precio": producto.producto_precio,
+            "foto": producto.producto_foto
+        } for producto in productos_bajo_stock]
+
+        return {
+            "count": len(productos_bajo_stock),
+            "productos": productos_formateados
+        }, 200
         
 

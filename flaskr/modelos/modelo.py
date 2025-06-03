@@ -8,8 +8,8 @@ class Usuario(db.Model):
     __tablename__ = 'usuario'
 
     id_usuario = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    nombre = db.Column(db.String(100))
-    numerodoc = db.Column(db.Integer)
+    nombre = db.Column(db.String(100), nullable=False)
+    numerodoc = db.Column(db.Integer, nullable=False)
     correo = db.Column(db.String(100), unique=True, nullable=False)
     contrasena_hash = db.Column(db.String(255))
     rol_id = db.Column(db.Integer, db.ForeignKey('rol.rol_id'))
@@ -42,7 +42,7 @@ class Categoria(db.Model):
     __tablename__ = 'categoria'
 
     id_categoria = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(50))
+    nombre = db.Column(db.String(50), nullable=False)
 
 
 class Producto(db.Model):
@@ -100,7 +100,7 @@ class Carrito(db.Model):
     __tablename__ = 'carrito'
 
     id_carrito = db.Column(db.Integer, primary_key=True)
-    id_usuario = db.Column(db.Integer, db.ForeignKey('usuario.id_usuario'))
+    id_usuario = db.Column(db.Integer, db.ForeignKey('usuario.id_usuario'), nullable=False)
     fecha = db.Column(db.DateTime, default=db.func.now())
     total = db.Column(db.Integer, nullable=False, default=0)
     procesado = db.Column(db.Boolean, default=False)
@@ -125,7 +125,7 @@ class Pago(db.Model):
     __tablename__ = 'pago'
 
     id_pago = db.Column(db.Integer, primary_key=True)
-    id_carrito = db.Column(db.Integer, db.ForeignKey('carrito.id_carrito'))
+    id_carrito = db.Column(db.Integer, db.ForeignKey('carrito.id_carrito'), nullable=False)
     monto = db.Column(db.Integer, nullable=False)
     fecha_pago = db.Column(db.DateTime, default=db.func.now())
     metodo_pago = db.Column(db.Enum('tarjeta', 'paypal', 'transferencia', name='metodo_pago'))
@@ -138,7 +138,7 @@ class PaypalDetalle(db.Model):
     id_paypal = db.Column(db.Integer, primary_key=True)
     id_pago = db.Column(db.Integer, db.ForeignKey('pago.id_pago'))
     email_paypal = db.Column(db.String(150), nullable=False)
-    confirmacion_id = db.Column(db.String(255))
+    confirmacion_id = db.Column(db.String(255), nullable=False)
 
     pago = db.relationship('Pago', backref=db.backref('paypal', uselist=False))
 
@@ -151,7 +151,7 @@ class TransferenciaDetalle(db.Model):
     nombre_titular = db.Column(db.String(100), nullable=False)
     banco_origen = db.Column(db.String(100), nullable=False)
     numero_cuenta = db.Column(db.String(100), nullable=False)
-    comprobante_url = db.Column(db.String(255))
+    comprobante_url = db.Column(db.String(255), nullable=False)
     fecha_transferencia = db.Column(db.DateTime, default=db.func.now())
 
     pago = db.relationship('Pago', backref=db.backref('transferencia', uselist=False))
@@ -198,7 +198,7 @@ class Factura(db.Model):
     id_factura = db.Column(db.Integer, primary_key=True)
     id_pago = db.Column(db.Integer, db.ForeignKey('pago.id_pago'))
     factura_fecha = db.Column(db.DateTime, default=db.func.now())
-    total = db.Column(db.Integer)
+    total = db.Column(db.Integer, nullable=False)
 
     detalles = db.relationship('DetalleFactura', backref='factura', lazy=True)
 
@@ -219,7 +219,7 @@ class Orden(db.Model):
 
     id_orden = db.Column(db.Integer, primary_key=True)
     id_usuario = db.Column(db.Integer, db.ForeignKey('usuario.id_usuario'))
-    id_factura = db.Column(db.Integer, db.ForeignKey('factura.id_factura'))
+    id_factura = db.Column(db.Integer, db.ForeignKey('factura.id_factura'), nullable=False)
     fecha_orden = db.Column(db.DateTime, default=db.func.now())
     monto_total = db.Column(db.Integer, nullable=False)
     estado = db.Column(

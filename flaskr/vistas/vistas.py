@@ -158,37 +158,56 @@ class VistaPerfilUsuario(Resource):
 
         data = request.json
 
-        # Validación obligatoria de contraseña actual
-        if 'contrasena_actual' not in data or not usuario.verificar_contrasena(data['contrasena_actual']):
-            return {"message": "Contraseña actual incorrecta"}, 401
+        # Verificar si hay datos para actualizar
+        if not any(key in data for key in ['nombre', 'numerodoc', 'correo', 'nueva_contrasena']):
+            return {"message": "No hay datos para actualizar"}, 400
 
-        # Validación del nombre
+        # Validación de contraseña actual solo si se está cambiando algo
+        if 'contrasena_actual' not in data or not usuario.verificar_contrasena(data['contrasena_actual']):
+            return {"message": "Contraseña actual incorrecta o no proporcionada"}, 401
+
+        # Actualización condicional de campos
+        updated = False
+
         if 'nombre' in data:
-            if not re.match("^[A-Za-záéíóúÁÉÍÓÚñÑ\\s]+$", data['nombre']):
+            if data['nombre'] and not re.match("^[A-Za-záéíóúÁÉÍÓÚñÑ\\s]+$", data['nombre']):
                 return {"message": "El nombre solo debe contener letras y espacios"}, 400
             usuario.nombre = data['nombre']
+            updated = True
 
-        # Validación del documento
         if 'numerodoc' in data:
-            if not re.match("^\\d{1,15}$", data['numerodoc']):
-                return {"message": "El documento debe contener solo números (máx. 15 dígitos)"}, 400
-            usuario.numerodoc = data['numerodoc']
+            # Verificar si el valor existe y no es None/empty
+            if data['numerodoc'] is not None and data['numerodoc'] != '':
+                # Convertir a string para la validación (por si viene como número)
+                numerodoc_str = str(data['numerodoc'])
+                
+                # Validar el formato
+                if not re.match("^\\d{1,15}$", numerodoc_str):
+                    return {"message": "El documento debe contener solo números (máx. 15 dígitos)"}, 400
+                
+                # Asignar el valor (puedes decidir si guardar como string o entero)
+                usuario.numerodoc = int(numerodoc_str)  # o mantener como str si prefieres
+                updated = True
 
-        # Validación del correo
         if 'correo' in data:
-            if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", data['correo']):
-                return {"message": "Ingrese un correo electrónico válido"}, 400
-            if Usuario.query.filter(Usuario.correo == data['correo'], Usuario.id_usuario != id_usuario).first():
-                return {"message": "Este correo ya está registrado por otro usuario"}, 400
-            usuario.correo = data['correo']
+            if data['correo']:
+                if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", data['correo']):
+                    return {"message": "Ingrese un correo electrónico válido"}, 400
+                if Usuario.query.filter(Usuario.correo == data['correo'], Usuario.id_usuario != id_usuario).first():
+                    return {"message": "Este correo ya está registrado por otro usuario"}, 400
+                usuario.correo = data['correo']
+                updated = True
 
-        # Validación de nueva contraseña (solo si se proporciona)
         if 'nueva_contrasena' in data and data['nueva_contrasena']:
             if not re.match("^[A-Za-z0-9]{8,16}$", data['nueva_contrasena']):
                 return {"message": "La nueva contraseña debe ser alfanumérica (8-16 caracteres)"}, 400
             if data['nueva_contrasena'] != data.get('confirmar_contrasena', ''):
                 return {"message": "Las nuevas contraseñas no coinciden"}, 400
             usuario.contrasena = data['nueva_contrasena']
+            updated = True
+
+        if not updated:
+            return {"message": "No se realizaron cambios"}, 200
 
         db.session.commit()
         
@@ -406,10 +425,6 @@ class VistaLogin(Resource):
         return {"mensaje": "Usuario o contraseña incorrectos"}, 401
 
 
-
-
-
-
 class VistaSignIn(Resource):
     def post(self):
         # Validación del nombre (solo letras y espacios)
@@ -483,9 +498,7 @@ class VistaCarritoProducto(Resource):
         
         # Devolver los productos encontrados
         return carrito_producto_schema.dump(productos), 200
-
-
-            
+           
 class VistaCarrito(Resource):
     # Crear un nuevo carrito de compras o ver el carrito de un usuario existente
     @jwt_required()
@@ -595,8 +608,7 @@ class VistaCarrito(Resource):
         db.session.commit()
 
         return {"message": "Producto eliminado del carrito exitosamente."}, 200
-
-    
+ 
 class VistaCarritoActivo(Resource):
     @jwt_required()
     def get(self):
@@ -643,8 +655,6 @@ class VistaFacturas(Resource):
     def get(self):
         facturas = Factura.query.all()
         return facturas_schema.dump(facturas), 200
-
-
 
 class VistaPagoTarjeta(Resource):
     @jwt_required()
@@ -820,8 +830,6 @@ class VistaPaypal(Resource):
         db.session.commit()
         return {"message": "Detalles de PayPal guardados exitosamente"}, 201
 
-
-
 class VistaRolUsuario(Resource):
     @jwt_required()
     def get(self):
@@ -831,7 +839,6 @@ class VistaRolUsuario(Resource):
             return {'rol_id': usuario.rol_id}, 200
         else:
             return {'message': 'Usuario no encontrado'}, 404
-
 
 class VistaProductosRecomendados(Resource):
     @jwt_required()
@@ -859,7 +866,6 @@ class VistaProductosRecomendados(Resource):
         productos_lista = ProductoSchema(many=True).dump(productos)
 
         return productos_lista, 200
-
 
 class VistaFactura(Resource):
     @jwt_required()
@@ -968,7 +974,6 @@ class VistaFactura(Resource):
             } for factura in facturas
         ], 200
 
-
 class VistaDetalleFactura(Resource):
     @jwt_required()
     def get(self, id_factura=None):
@@ -1070,7 +1075,6 @@ class VistaUltimaFactura(Resource):
             
         return factura_schema.dump(factura), 200
         
-
 class VistaEnvio(Resource):
     @jwt_required()
     def post(self):
@@ -1143,9 +1147,6 @@ class VistaEnvio(Resource):
             current_app.logger.error(f"Error al crear envío y orden: {str(e)}")
             return {"error": f"Error al crear envío y orden: {str(e)}"}, 500
         
-##ESTADOS DEL ENVIO 
-
-
 class VistaEstadoEnvio(Resource):
     @jwt_required()
     def get(self, id_orden):
@@ -1265,9 +1266,6 @@ class VistaActualizarEstadoAdmin(Resource):
             current_app.logger.error(f"Error al actualizar estado: {str(e)}", exc_info=True)
             return {'error': 'Error al actualizar el estado'}, 500
 
-
-        
-        
 class VistaAjusteStock(Resource):
     @jwt_required()
     def post(self, id_producto):
@@ -1307,7 +1305,6 @@ class VistaAjusteStock(Resource):
             db.session.rollback()
             return {"message": f"Error al actualizar el stock: {str(e)}"}, 500
 
-
 class VistaHistorialStockProducto(Resource):
     @jwt_required()
     def get(self, id_producto):
@@ -1327,7 +1324,6 @@ class VistaHistorialStockProducto(Resource):
                           .all()
 
         return historiales_stock_schema.dump(historial), 200
-
 
 class VistaHistorialStockGeneral(Resource):
     @jwt_required()
@@ -1352,7 +1348,6 @@ class VistaHistorialStockGeneral(Resource):
             historial_data.append(registro_data)
 
         return historial_data, 200
-
 
 class VistaStockProductos(Resource):
     @jwt_required()
@@ -1514,5 +1509,3 @@ class VistaProductosBajoStock(Resource):
             "count": len(productos_bajo_stock),
             "productos": productos_formateados
         }, 200
-        
-

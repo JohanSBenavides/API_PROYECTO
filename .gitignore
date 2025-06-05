@@ -1,0 +1,8 @@
+# Ignorar la carpeta de entorno virtual
+venv/
+
+# Ignorar la carpeta migrations dentro de flaskr
+flaskr/migrations/
+
+# Ignorar todas las carpetas __pycache__
+__pycache__/

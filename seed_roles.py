@@ -9,8 +9,8 @@ def seed_roles():
         # Inicialización de roles
         if not Rol.query.first():  # Si no existe ningún rol en la base de datos
             roles = [
-                Rol(rol_id=1, nombre_rol="ADMINISTRADOR"),  # Rol Administrador
-                Rol(rol_id=2, nombre_rol="CLIENTE")  # Rol Cliente
+                Rol(nombre_rol="ADMINISTRADOR"),  # Rol Administrador
+                Rol(nombre_rol="CLIENTE")  # Rol Cliente
             ]
             db.session.bulk_save_objects(roles)  # Guardar los roles en la base de datos
             db.session.commit()  # Confirmar los cambios

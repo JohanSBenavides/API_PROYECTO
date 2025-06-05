@@ -9,6 +9,7 @@ from flask_mail import Message
 from flask import current_app
 from flask import request, render_template
 from flask import render_template
+from sqlalchemy.exc import IntegrityError, NoResultFound
 from flaskr.modelos.esquemas import PaypalDetalleSchema, TransferenciaDetalleSchema, TarjetaDetalleSchema, FacturaSchema, HistorialStockSchema
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from ..modelos import db, Usuario, TarjetaDetalle, TransferenciaDetalle, PaypalDetalle, Producto, Categoria, CarritoProductoSchema, CarritoProducto, Rol, UsuarioSchema, ProductoSchema, CategoriaSchema, RolSchema, PagoSchema, EnvioSchema, OrdenSchema, CarritoSchema, FacturaSchema, DetalleFacturaSchema, DetalleFactura, Factura, Pago, Orden, Envio, Carrito, HistorialStock
@@ -45,79 +46,99 @@ class VistaProtegida(Resource):
         return {"mensaje": f"Bienvenido {usuario_actual}"}, 200
 
 class VistaUsuarios(Resource):
-    @jwt_required()
     def get(self):
         usuarios = Usuario.query.all()
         return [usuario_schema.dump(usuario) for usuario in usuarios], 200
 
-    @jwt_required()
     def post(self):
-        # Validar campos requeridos
         if not all(key in request.json for key in ['nombre', 'numerodoc', 'correo', 'contrasena']):
             return {"message": "Faltan campos obligatorios"}, 400
-
-        # Validar formato del nombre (solo letras y espacios)
         if not re.match(r'^[A-Za-záéíóúÁÉÍÓÚñÑ\s]+$', request.json["nombre"]):
             return {"message": "El nombre solo debe contener letras y espacios"}, 400
-
-        # Validar formato del número de documento (solo números, máximo 15)
-        if not re.match(r'^\d{1,15}$', str(request.json["numerodoc"])):
-            return {"message": "El número de documento debe contener solo números (máximo 15 dígitos)"}, 400
-
-        # Validar formato del correo
+        if not str(request.json["numerodoc"]).isdigit():
+            return {"message": "El número de documento debe contener solo números"}, 400
         if not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', request.json["correo"]):
             return {"message": "Formato de correo electrónico inválido"}, 400
-
-        # Validar contraseña (8-16 caracteres alfanuméricos)
         if not re.match(r'^[A-Za-z0-9]{8,16}$', request.json["contrasena"]):
             return {"message": "La contraseña debe tener entre 8 y 16 caracteres alfanuméricos"}, 400
-
-        # Verificar si el correo ya existe
         if Usuario.query.filter_by(correo=request.json["correo"]).first():
-            return {"message": "El correo ya está registrado."}, 400
-
-        # Verificar si el número de documento ya existe
+            return {"message": "El correo ya está registrado"}, 400
         if Usuario.query.filter_by(numerodoc=request.json["numerodoc"]).first():
-            return {"message": "El número de documento ya está registrado."}, 400
-
-        rol_cliente = Rol.query.filter_by(rol_id=2).first()
+            return {"message": "El número de documento ya está registrado"}, 400
+        rol_cliente = Rol.query.filter_by(nombre_rol="Cliente").first()
         if not rol_cliente:
-            return {"message": "Rol 'Cliente' no encontrado."}, 400
+            return {"message": "Rol Cliente no configurado en el sistema"}, 500
 
-        nuevo_usuario = Usuario(
-            nombre=request.json["nombre"],
-            numerodoc=request.json["numerodoc"],
-            correo=request.json["correo"],
-            contrasena=request.json["contrasena"],
-            rol_id=rol_cliente.rol_id
-        )
-
-        db.session.add(nuevo_usuario)
-        db.session.commit()
-
-        return {
-            "message": "Usuario creado exitosamente."
-        }, 201
+        try:
+            nuevo_usuario = Usuario(
+                nombre=request.json["nombre"],
+                numerodoc=int(request.json["numerodoc"]),  
+                correo=request.json["correo"],
+                rol_id=rol_cliente.rol_id
+            )
+            nuevo_usuario.contrasena = request.json["contrasena"]  # Esto generará el hash
+            
+            db.session.add(nuevo_usuario)
+            db.session.commit()
+            
+            return {"message": "Usuario creado exitosamente"}, 201
+        except Exception as e:
+            db.session.rollback()
+            return {"message": f"Error al crear usuario: {str(e)}"}, 500
 
 
 class VistaUsuario(Resource):
     @jwt_required()
     def put(self, id_usuario):
-        usuario = Usuario.query.get(id_usuario)
-        if not usuario:
-            return {'message': 'El usuario no existe'}, 404
+        try:
+            # Obtener usuario dentro del contexto de la sesión
+            usuario = Usuario.query.get(id_usuario)
+            if not usuario:
+                db.session.rollback()
+                return {'mensaje': 'El usuario no existe'}, 404
 
-        usuario.nombre = request.json.get('nombre', usuario.nombre)
-        usuario.numerodoc = request.json.get('numerodoc', usuario.numerodoc)
-        usuario.correo = request.json.get('correo', usuario.correo)
+            # Validar correo único
+            nuevo_correo = request.json.get('correo')
+            if nuevo_correo and nuevo_correo != usuario.correo:
+                if Usuario.query.filter(Usuario.correo == nuevo_correo, Usuario.id_usuario != id_usuario).first():
+                    db.session.rollback()
+                    return {'mensaje': 'El correo ya está registrado'}, 400
 
-        nueva_contrasena = request.json.get('contrasena', None)
-        if nueva_contrasena:
-            usuario.contrasena = nueva_contrasena
+            # Actualizar campos
+            if 'nombre' in request.json:
+                usuario.nombre = request.json['nombre']
+            if 'numerodoc' in request.json:
+                usuario.numerodoc = request.json['numerodoc']
+            if 'correo' in request.json:
+                usuario.correo = request.json['correo']
+            
+            # Actualizar rol si se proporciona
+            if 'rol_id' in request.json:
+                rol = Rol.query.get(request.json['rol_id'])
+                if not rol:
+                    db.session.rollback()
+                    return {'mensaje': 'Rol no encontrado'}, 400
+                usuario.rol_id = request.json['rol_id']
 
-        db.session.commit()
-        return usuario_schema.dump(usuario)
+            # Actualizar contraseña si se proporciona
+            if 'contrasena' in request.json:
+                usuario.contrasena = request.json['contrasena']
 
+            db.session.commit()
+            return {'mensaje': 'Usuario actualizado correctamente'}, 200
+
+        except NoResultFound:
+            db.session.rollback()
+            return {'mensaje': 'Recurso no encontrado'}, 404
+        except IntegrityError as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error de integridad: {str(e)}")
+            return {'mensaje': 'Error de integridad en la base de datos'}, 400
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error inesperado: {str(e)}")
+            return {'mensaje': 'Error interno del servidor'}, 500
+        
     @jwt_required()
     def delete(self, id_usuario):
         usuario = Usuario.query.get(id_usuario)
@@ -158,56 +179,37 @@ class VistaPerfilUsuario(Resource):
 
         data = request.json
 
-        # Verificar si hay datos para actualizar
-        if not any(key in data for key in ['nombre', 'numerodoc', 'correo', 'nueva_contrasena']):
-            return {"message": "No hay datos para actualizar"}, 400
-
-        # Validación de contraseña actual solo si se está cambiando algo
+        # Validación obligatoria de contraseña actual
         if 'contrasena_actual' not in data or not usuario.verificar_contrasena(data['contrasena_actual']):
-            return {"message": "Contraseña actual incorrecta o no proporcionada"}, 401
+            return {"message": "Contraseña actual incorrecta"}, 401
 
-        # Actualización condicional de campos
-        updated = False
-
+        # Validación del nombre
         if 'nombre' in data:
-            if data['nombre'] and not re.match("^[A-Za-záéíóúÁÉÍÓÚñÑ\\s]+$", data['nombre']):
+            if not re.match("^[A-Za-záéíóúÁÉÍÓÚñÑ\\s]+$", data['nombre']):
                 return {"message": "El nombre solo debe contener letras y espacios"}, 400
             usuario.nombre = data['nombre']
-            updated = True
 
+        # Validación del documento
         if 'numerodoc' in data:
-            # Verificar si el valor existe y no es None/empty
-            if data['numerodoc'] is not None and data['numerodoc'] != '':
-                # Convertir a string para la validación (por si viene como número)
-                numerodoc_str = str(data['numerodoc'])
-                
-                # Validar el formato
-                if not re.match("^\\d{1,15}$", numerodoc_str):
-                    return {"message": "El documento debe contener solo números (máx. 15 dígitos)"}, 400
-                
-                # Asignar el valor (puedes decidir si guardar como string o entero)
-                usuario.numerodoc = int(numerodoc_str)  # o mantener como str si prefieres
-                updated = True
+            if not re.match("^\\d{1,15}$", data['numerodoc']):
+                return {"message": "El documento debe contener solo números (máx. 15 dígitos)"}, 400
+            usuario.numerodoc = data['numerodoc']
 
+        # Validación del correo
         if 'correo' in data:
-            if data['correo']:
-                if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", data['correo']):
-                    return {"message": "Ingrese un correo electrónico válido"}, 400
-                if Usuario.query.filter(Usuario.correo == data['correo'], Usuario.id_usuario != id_usuario).first():
-                    return {"message": "Este correo ya está registrado por otro usuario"}, 400
-                usuario.correo = data['correo']
-                updated = True
+            if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", data['correo']):
+                return {"message": "Ingrese un correo electrónico válido"}, 400
+            if Usuario.query.filter(Usuario.correo == data['correo'], Usuario.id_usuario != id_usuario).first():
+                return {"message": "Este correo ya está registrado por otro usuario"}, 400
+            usuario.correo = data['correo']
 
+        # Validación de nueva contraseña (solo si se proporciona)
         if 'nueva_contrasena' in data and data['nueva_contrasena']:
             if not re.match("^[A-Za-z0-9]{8,16}$", data['nueva_contrasena']):
                 return {"message": "La nueva contraseña debe ser alfanumérica (8-16 caracteres)"}, 400
             if data['nueva_contrasena'] != data.get('confirmar_contrasena', ''):
                 return {"message": "Las nuevas contraseñas no coinciden"}, 400
             usuario.contrasena = data['nueva_contrasena']
-            updated = True
-
-        if not updated:
-            return {"message": "No se realizaron cambios"}, 200
 
         db.session.commit()
         
@@ -424,57 +426,54 @@ class VistaLogin(Resource):
 
         return {"mensaje": "Usuario o contraseña incorrectos"}, 401
 
-
 class VistaSignIn(Resource):
     def post(self):
-        # Validación del nombre (solo letras y espacios)
-        nombre = request.json.get("nombre", "").strip()
-        if not nombre or not re.match("^[A-Za-záéíóúÁÉÍÓÚñÑ\\s]+$", nombre):
-            return {"message": "El nombre solo debe contener letras y espacios."}, 400
+        data = request.get_json(force=True)  # obtener JSON, forzando si necesario
 
-        # Validación del número de documento (solo números, máximo 15)
-        numerodoc = request.json.get("numerodoc", "").strip()
-        if not numerodoc or not re.match("^\\d{1,15}$", numerodoc):
-            return {"message": "El documento debe contener solo números (máximo 15 dígitos)."}, 400
+        nombre = data.get("nombre", "").strip()
+        correo = data.get("correo", "").strip()
+        contrasena = data.get("contrasena", "")
+        numerodoc = data.get("numerodoc")
 
-        # Validación del correo (formato válido)
-        correo = request.json.get("correo", "").strip()
-        if not correo or not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", correo):
-            return {"message": "Ingrese un correo electrónico válido."}, 400
+        # Validaciones básicas
+        if not nombre:
+            return {"mensaje": "El nombre es obligatorio"}, 400
+        if not correo:
+            return {"mensaje": "El correo es obligatorio"}, 400
+        if contrasena.strip() == "":
+            return {"mensaje": "La contraseña no puede estar vacía"}, 400
+        if numerodoc is None:
+            return {"mensaje": "El número de documento es obligatorio"}, 400
+        if not isinstance(numerodoc, int):
+            return {"mensaje": "El número de documento debe ser un número entero"}, 400
 
-        # Validación de la contraseña (8-16 caracteres, alfanumérica)
-        contrasena = request.json.get("contrasena", "").strip()
-        if not contrasena or not re.match("^[A-Za-z0-9]{8,16}$", contrasena):
-            return {"message": "La contraseña debe ser alfanumérica (8-16 caracteres)."}, 400
+        # Verificar si el correo ya existe
+        usuario_existente = Usuario.query.filter_by(correo=correo).first()
+        if usuario_existente:
+            return {"mensaje": "El correo ya existe"}, 400
 
-        # Verificar si el correo ya está registrado
-        if Usuario.query.filter_by(correo=correo).first():
-            return {"message": "El correo ya está registrado."}, 400
-
-        # Asignar rol de cliente (ID=2)
-        rol_cliente = Rol.query.filter_by(rol_id=2).first()
+        # Obtener el rol "Cliente" para asignar por defecto
+        rol_cliente = Rol.query.filter_by(nombre_rol="Cliente").first()
         if not rol_cliente:
-            return {"message": "Rol 'Cliente' no encontrado."}, 400
+            return {"mensaje": "El rol Cliente no está configurado en la base de datos"}, 500
 
-        # Crear el nuevo usuario
-        nuevo_usuario = Usuario(
-            nombre=nombre,
-            numerodoc=numerodoc,
-            correo=correo,
-            contrasena=contrasena,
-            rol_id=rol_cliente.rol_id
-        )
+        try:
+            nuevo_usuario = Usuario(
+                nombre=nombre,
+                correo=correo,
+                numerodoc=numerodoc,
+                rol_id=rol_cliente.rol_id
+            )
+            nuevo_usuario.contrasena = contrasena 
 
-        db.session.add(nuevo_usuario)
-        db.session.commit()
+            db.session.add(nuevo_usuario)
+            db.session.commit()
 
-        # Generar token JWT
-        access_token = create_access_token(identity=nuevo_usuario.id_usuario)
+            return {"mensaje": "Usuario creado exitosamente"}, 201
 
-        return {
-            "message": "Usuario creado exitosamente.",
-            "token": access_token
-        }, 201
+        except Exception as e:
+            db.session.rollback()
+            return {"mensaje": f"Error al crear usuario: {str(e)}"}, 500
 
 class VistaCarritos(Resource):
     @jwt_required()
@@ -498,7 +497,9 @@ class VistaCarritoProducto(Resource):
         
         # Devolver los productos encontrados
         return carrito_producto_schema.dump(productos), 200
-           
+
+
+            
 class VistaCarrito(Resource):
     # Crear un nuevo carrito de compras o ver el carrito de un usuario existente
     @jwt_required()
@@ -608,7 +609,8 @@ class VistaCarrito(Resource):
         db.session.commit()
 
         return {"message": "Producto eliminado del carrito exitosamente."}, 200
- 
+
+    
 class VistaCarritoActivo(Resource):
     @jwt_required()
     def get(self):
@@ -655,6 +657,8 @@ class VistaFacturas(Resource):
     def get(self):
         facturas = Factura.query.all()
         return facturas_schema.dump(facturas), 200
+
+
 
 class VistaPagoTarjeta(Resource):
     @jwt_required()
@@ -830,6 +834,8 @@ class VistaPaypal(Resource):
         db.session.commit()
         return {"message": "Detalles de PayPal guardados exitosamente"}, 201
 
+
+
 class VistaRolUsuario(Resource):
     @jwt_required()
     def get(self):
@@ -839,6 +845,7 @@ class VistaRolUsuario(Resource):
             return {'rol_id': usuario.rol_id}, 200
         else:
             return {'message': 'Usuario no encontrado'}, 404
+
 
 class VistaProductosRecomendados(Resource):
     @jwt_required()
@@ -866,6 +873,7 @@ class VistaProductosRecomendados(Resource):
         productos_lista = ProductoSchema(many=True).dump(productos)
 
         return productos_lista, 200
+
 
 class VistaFactura(Resource):
     @jwt_required()
@@ -974,6 +982,7 @@ class VistaFactura(Resource):
             } for factura in facturas
         ], 200
 
+
 class VistaDetalleFactura(Resource):
     @jwt_required()
     def get(self, id_factura=None):
@@ -1075,6 +1084,7 @@ class VistaUltimaFactura(Resource):
             
         return factura_schema.dump(factura), 200
         
+
 class VistaEnvio(Resource):
     @jwt_required()
     def post(self):
@@ -1147,6 +1157,9 @@ class VistaEnvio(Resource):
             current_app.logger.error(f"Error al crear envío y orden: {str(e)}")
             return {"error": f"Error al crear envío y orden: {str(e)}"}, 500
         
+##ESTADOS DEL ENVIO 
+
+
 class VistaEstadoEnvio(Resource):
     @jwt_required()
     def get(self, id_orden):
@@ -1266,6 +1279,9 @@ class VistaActualizarEstadoAdmin(Resource):
             current_app.logger.error(f"Error al actualizar estado: {str(e)}", exc_info=True)
             return {'error': 'Error al actualizar el estado'}, 500
 
+
+        
+        
 class VistaAjusteStock(Resource):
     @jwt_required()
     def post(self, id_producto):
@@ -1305,6 +1321,7 @@ class VistaAjusteStock(Resource):
             db.session.rollback()
             return {"message": f"Error al actualizar el stock: {str(e)}"}, 500
 
+
 class VistaHistorialStockProducto(Resource):
     @jwt_required()
     def get(self, id_producto):
@@ -1324,6 +1341,7 @@ class VistaHistorialStockProducto(Resource):
                           .all()
 
         return historiales_stock_schema.dump(historial), 200
+
 
 class VistaHistorialStockGeneral(Resource):
     @jwt_required()
@@ -1348,6 +1366,7 @@ class VistaHistorialStockGeneral(Resource):
             historial_data.append(registro_data)
 
         return historial_data, 200
+
 
 class VistaStockProductos(Resource):
     @jwt_required()

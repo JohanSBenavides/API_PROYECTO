@@ -14,6 +14,9 @@ class Usuario(db.Model):
     contrasena_hash = db.Column(db.String(255))
     rol_id = db.Column(db.Integer, db.ForeignKey('rol.rol_id'))
 
+    # Relación con Rol
+    rol = db.relationship('Rol', back_populates='usuarios')  
+    
     carritos = db.relationship('Carrito', back_populates='usuario')
     envios = db.relationship('Envio', back_populates='usuario', cascade='all, delete-orphan')
 
@@ -35,7 +38,17 @@ class Rol(db.Model):
     __tablename__ = 'rol'
 
     rol_id = db.Column(db.Integer, primary_key=True)
-    nombre_rol = db.Column(db.String(50))
+    nombre_rol = db.Column(db.String(50), unique=True, nullable=False)
+    
+    # Relación con Usuario
+    usuarios = db.relationship('Usuario', back_populates='rol')
+
+    def __init__(self, nombre_rol=None):
+        if nombre_rol is None:
+            raise ValueError("El nombre del rol es obligatorio")
+        if len(nombre_rol) > 50:
+            raise ValueError("El nombre del rol no puede exceder los 50 caracteres")
+        self.nombre_rol = nombre_rol
 
 
 class Categoria(db.Model):
@@ -136,7 +149,7 @@ class PaypalDetalle(db.Model):
     __tablename__ = 'paypal_detalle'
 
     id_paypal = db.Column(db.Integer, primary_key=True)
-    id_pago = db.Column(db.Integer, db.ForeignKey('pago.id_pago'))
+    id_pago = db.Column(db.Integer, db.ForeignKey('pago.id_pago'), unique=True)
     email_paypal = db.Column(db.String(150), nullable=False)
     confirmacion_id = db.Column(db.String(255), nullable=False)
 
@@ -161,7 +174,7 @@ class TarjetaDetalle(db.Model):
     __tablename__ = 'tarjeta_detalle'
 
     id_tarjeta = db.Column(db.Integer, primary_key=True)
-    id_pago = db.Column(db.Integer, db.ForeignKey('pago.id_pago'))
+    id_pago = db.Column(db.Integer, db.ForeignKey('pago.id_pago'), unique=True)
     numero_tarjeta_hash = db.Column(db.String(255), nullable=False)
     nombre_en_tarjeta = db.Column(db.String(100), nullable=False)
     cvv_hash = db.Column(db.String(255), nullable=False)
@@ -186,7 +199,7 @@ class TarjetaDetalle(db.Model):
 
     @cvv.setter
     def cvv(self, valor):
-        self.cvv_hash = generate_password_hash(valor)
+        self.cvv_hash = generate_password_hash(str(valor))  # Convertir a string
 
     def verificar_cvv(self, valor):
         return check_password_hash(self.cvv_hash, valor)

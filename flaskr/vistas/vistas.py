@@ -189,11 +189,13 @@ class VistaPerfilUsuario(Resource):
                 return {"message": "El nombre solo debe contener letras y espacios"}, 400
             usuario.nombre = data['nombre']
 
-        # Validación del documento
+        # Validación del documento (MODIFICADO)
         if 'numerodoc' in data:
-            if not re.match("^\\d{1,15}$", data['numerodoc']):
+            # Convertir a string primero
+            numerodoc_str = str(data['numerodoc'])
+            if not re.match("^\\d{1,15}$", numerodoc_str):
                 return {"message": "El documento debe contener solo números (máx. 15 dígitos)"}, 400
-            usuario.numerodoc = data['numerodoc']
+            usuario.numerodoc = numerodoc_str  # Guardar como string
 
         # Validación del correo
         if 'correo' in data:

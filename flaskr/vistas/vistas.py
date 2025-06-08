@@ -455,7 +455,7 @@ class VistaSignIn(Resource):
             return {"mensaje": "El correo ya existe"}, 400
 
         # Obtener el rol "Cliente" para asignar por defecto
-        rol_cliente = Rol.query.filter_by(nombre_rol="Cliente").first()
+        rol_cliente = Rol.query.filter_by(nombre_rol="CLIENTE").first()
         if not rol_cliente:
             return {"mensaje": "El rol Cliente no está configurado en la base de datos"}, 500
 

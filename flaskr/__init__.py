@@ -10,23 +10,35 @@ from flask_mail import Mail
 from flask import request, jsonify
 from flask import render_template
 from datetime import datetime
-from .modelos.modelo import db
 from werkzeug.security import generate_password_hash
+from dotenv import load_dotenv
+from .modelos.modelo import db
 from .vistas.vistas import (
-    VistaUsuario, VistaProductos, VistaProductosBajoStock, VistaActualizarEstadoAdmin, VistaEnviosAdmin, VistaEstadoEnvio, VistaPedidosUsuario, VistaUltimaFactura, VistaReportesProductos, VistaProducto, VistaTarjeta, VistaPaypal, VistaTransferencia, VistaProductosRecomendados,
-    VistaCategorias, VistaCategoria, VistaUsuarios, VistaLogin, VistaSignIn, 
-    VistaCarrito, VistaCarritos, VistaCarritoActivo, VistaRolUsuario,
-    VistaPago, VistaPerfilUsuario, VistaFacturas, VistaAjusteStock, VistaHistorialStockGeneral, VistaHistorialStockProducto, VistaStockProductos ,VistaFactura, VistaDetalleFactura, VistaEnvio, VistaCarritoProducto, VistaPagos, VistaPagoPaypal, VistaPagoTarjeta, VistaPagoTransferencia
+    VistaUsuario, VistaProductos, VistaProductosBajoStock, VistaActualizarEstadoAdmin, 
+    VistaEnviosAdmin, VistaEstadoEnvio, VistaPedidosUsuario, VistaUltimaFactura, 
+    VistaReportesProductos, VistaProducto, VistaTarjeta, VistaPaypal, VistaTransferencia, 
+    VistaProductosRecomendados, VistaCategorias, VistaCategoria, VistaUsuarios, 
+    VistaLogin, VistaSignIn, VistaCarrito, VistaCarritos, VistaCarritoActivo, 
+    VistaRolUsuario, VistaPago, VistaPerfilUsuario, VistaFacturas, VistaAjusteStock, 
+    VistaHistorialStockGeneral, VistaHistorialStockProducto, VistaStockProductos,
+    VistaFactura, VistaDetalleFactura, VistaEnvio, VistaCarritoProducto, VistaPagos, 
+    VistaPagoPaypal, VistaPagoTarjeta, VistaPagoTransferencia
 )
 
-# ✅ Creamos mail a nivel global
+# Cargar variables de entorno
+load_dotenv()
+
+# Creamos mail a nivel global
 mail = Mail()
 
 def create_app(config_name='default'):
     app = Flask(__name__)
 
-    # Configuración de la base de datos MySQL
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:@localhost/phphone'
+    # 🔥 Configuración actualizada para PostgreSQL en Railway
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL',
+        "postgresql://postgres:RQFUCXZzJBBDLGDowpDclXuDCBaRNAlM"
+        "@interchange.proxy.rlwy.net:58274/railway?sslmode=require"
+    )
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     # Configuración para la subida de imágenes
@@ -43,7 +55,6 @@ def create_app(config_name='default'):
     @app.template_filter('format_number')
     def format_number(value):
         if isinstance(value, int):
-            # Formatea el número con el signo de pesos y separadores de miles
             return f"${value:,.0f}".replace(",", ".")
         return value
 
@@ -52,22 +63,20 @@ def create_app(config_name='default'):
     migrate = Migrate(app, db)
 
     # Configuración de JWT
-    app.config['JWT_SECRET_KEY'] = 'clave_secreta'
+    app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'clave_secreta')
     jwt = JWTManager(app)
 
-    # ✅ Configuración de Flask-Mail
+    # Configuración de Flask-Mail
     app.config['MAIL_SERVER'] = 'smtp.gmail.com'
     app.config['MAIL_PORT'] = 587
     app.config['MAIL_USE_TLS'] = True
     app.config['MAIL_DEBUG'] = True
-    app.config['MAIL_USERNAME'] = 'dilanf1506@gmail.com'
-    app.config['MAIL_PASSWORD'] = 'zycb icwa fxby yocj'
-    app.config['MAIL_DEFAULT_SENDER'] = 'dilanf1506@gmail.com'
+    app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME', 'dilanf1506@gmail.com')
+    app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD', 'zycb icwa fxby yocj')
+    app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER', 'dilanf1506@gmail.com')
 
-    mail.init_app(app)  # ✅ Inicializamos el objeto mail con la app
-
+    mail.init_app(app)
     CORS(app)
-
 
     # Rutas de la API
     api = Api(app)
@@ -107,9 +116,10 @@ def create_app(config_name='default'):
     api.add_resource(VistaReportesProductos, '/reportes/productos-mas-vendidos')
     api.add_resource(VistaPedidosUsuario, '/api/mis-pedidos')
     api.add_resource(VistaUltimaFactura, '/factura/ultima')
-    api.add_resource(VistaEstadoEnvio, '/api/envios/<int:id_orden>/estado')  # GET
-    api.add_resource(VistaEnviosAdmin, '/api/admin/envios')  # GET: Listar envíos
+    api.add_resource(VistaEstadoEnvio, '/api/envios/<int:id_orden>/estado')
+    api.add_resource(VistaEnviosAdmin, '/api/admin/envios')
     api.add_resource(VistaActualizarEstadoAdmin, '/api/admin/envios/<int:id_envio>/estado')
-    api.add_resource(VistaProductosBajoStock, '/api/productos/bajo-stock') 
+    api.add_resource(VistaProductosBajoStock, '/api/productos/bajo-stock')
+
 
     return app

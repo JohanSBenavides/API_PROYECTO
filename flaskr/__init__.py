@@ -11,7 +11,6 @@ from flask import request, jsonify
 from flask import render_template
 from datetime import datetime
 from werkzeug.security import generate_password_hash
-from dotenv import load_dotenv
 from .modelos.modelo import db
 from .vistas.vistas import (
     VistaUsuario, VistaProductos, VistaProductosBajoStock, VistaActualizarEstadoAdmin, 
@@ -25,8 +24,6 @@ from .vistas.vistas import (
     VistaPagoPaypal, VistaPagoTarjeta, VistaPagoTransferencia
 )
 
-# Cargar variables de entorno
-load_dotenv()
 
 # Creamos mail a nivel global
 mail = Mail()
@@ -35,9 +32,7 @@ def create_app(config_name='default'):
     app = Flask(__name__)
 
     # 🔥 Configuración actualizada para PostgreSQL en Railway
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL',
-        "postgresql://postgres:RQFUCXZzJBBDLGDowpDclXuDCBaRNAlM"
-        "@interchange.proxy.rlwy.net:58274/railway?sslmode=require"
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('poner direccion localhostjaja"
     )
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
